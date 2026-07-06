@@ -1,6 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
+import pandas as pd
 import time
 
 # --- INITIAL APP ENVIRONMENT SETUP ---
@@ -21,11 +22,17 @@ def fetch_terminal_market_data(ticker_str):
     try:
         stock = yf.Ticker(ticker_str)
         info = stock.info
-        # Pull 5 days of 15-minute interval bars to keep response speeds fast
-        history = stock.history(period="5d", interval="15m")
+        
+        # Pull 1 year of daily historical bars to satisfy the rolling SMA 50 and SMA 200 criteria
+        history = stock.history(period="1y", interval="1d")
         
         if not info or history.empty:
             return None, None
+            
+        # Calculate Technical Indicators securely
+        history['SMA50'] = history['Close'].rolling(window=50).mean()
+        history['SMA200'] = history['Close'].rolling(window=200).mean()
+        
         return info, history
     except Exception:
         return None, None
@@ -94,23 +101,44 @@ if ticker_symbol:
                 delta=f"${change:+.2f} ({pct_change:+.2f}%) Daily Session Net Change"
             )
 
-        # 3. HIGH-PERFORMANCE INTERACTIVE GRAPH
+        # 3. HIGH-PERFORMANCE INTERACTIVE GRAPH (With Overlaid Moving Averages)
         st.markdown("---")
-        st.caption("📈 Historical Session Intraday Performance Trend")
+        st.caption("📈 1-Year Historical Chart with Daily SMA Trends")
         
         fig = go.Figure()
+        
+        # Primary Closing Price Line
         fig.add_trace(go.Scatter(
             x=df_history.index, 
             y=df_history['Close'], 
             mode='lines',
-            line=dict(color='#1565C0', width=2),
-            fill='tozeroy',
-            fillcolor='rgba(21, 101, 192, 0.1)'
+            name='Closing Price',
+            line=dict(color='#1565C0', width=2)
         ))
+        
+        # SMA 50 Line
+        fig.add_trace(go.Scatter(
+            x=df_history.index, 
+            y=df_history['SMA50'], 
+            mode='lines',
+            name='50-Day SMA',
+            line=dict(color='#FBC02D', width=1.5, dash='dash')
+        ))
+        
+        # SMA 200 Line
+        fig.add_trace(go.Scatter(
+            x=df_history.index, 
+            y=df_history['SMA200'], 
+            mode='lines',
+            name='200-Day SMA',
+            line=dict(color='#D32F2F', width=1.5, dash='dot')
+        ))
+        
         fig.update_layout(
-            height=300,
+            height=400,
             margin=dict(l=20, r=20, t=10, b=10),
             template="plotly_dark",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             xaxis=dict(showgrid=False),
             yaxis=dict(title=f"Price ({currency})", showgrid=True)
         )
