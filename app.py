@@ -68,7 +68,11 @@ def fetch_longlived_metadata(ticker_str):
     }
     try:
         t = yf.Ticker(ticker_str)
-        payload["longName"] = t.fast_info.get("shortName", ticker_str)
+        name = t.fast_info.get("shortName")
+        if not name:
+            info = fetch_ticker_info_blob(ticker_str)
+            name = info.get("longName") or info.get("shortName") or ticker_str
+        payload["longName"] = name
         info = fetch_ticker_info_blob(ticker_str)
         if info:
             payload["targetPrice"] = info.get("targetMeanPrice")
@@ -223,7 +227,7 @@ if raw_history is not None and info_payload is not None:
     main_layout, fundamental_sidebar = st.columns([2.3, 0.7])
     
     with main_layout:
-        st.subheader(f"🏢 {fnd['longName']} ({ticker_symbol}) — Terminal View")
+        st.subheader(f"🏢 {ticker_symbol} ({fnd['longName']}) — Terminal View")
         col_h1, col_h2, col_h3, col_h4 = st.columns(4)
         col_h1.metric("Closing Value (USD)", f"${latest_close:,.2f}", f"${price_change:+.2f} ({pct_change:+.2f}%)")
         col_h2.metric("Relative Volume (RVOL)", f"{latest['RVOL']:.2f}x" if pd.notna(latest['RVOL']) else "N/A", "vs 20-Day Mean")
