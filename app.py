@@ -125,7 +125,7 @@ if summary:
         ("Analyst Price Target Mean", target_price, "num")
     ]
 
-    # --- LOCALIZED TECHNICAL CALCULATION MATRIX ---
+    # --- HISTORICAL DATA FRAME GENERATION ---
     df_chart = pd.DataFrame()
     if chart:
         try:
@@ -135,23 +135,6 @@ if summary:
                 'Date': timestamps, 'Open': quotes['open'], 'High': quotes['high'],
                 'Low': quotes['low'], 'Close': quotes['close'], 'Volume': quotes['volume']
             }).dropna()
-            
-            if not df_chart.empty:
-                # Moving Averages
-                df_chart['SMA_20'] = df_chart['Close'].rolling(window=20).mean()
-                df_chart['SMA_50'] = df_chart['Close'].rolling(window=50).mean()
-                
-                # Bollinger Bands
-                std_20 = df_chart['Close'].rolling(window=20).std()
-                df_chart['BB_Upper'] = df_chart['SMA_20'] + (std_20 * 2)
-                df_chart['BB_Lower'] = df_chart['SMA_20'] - (std_20 * 2)
-                
-                # Relative Strength Index (RSI 14)
-                delta = df_chart['Close'].diff()
-                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                rs = gain / (loss + 1e-9)
-                df_chart['RSI'] = 100 - (100 / (1 + rs))
         except Exception:
             pass
 
@@ -225,38 +208,27 @@ if summary:
         )
         st.plotly_chart(fig_score, use_container_width=True)
 
-    # --- LOWER EXPANSION: REAL TECHNICAL OVERLAYS & LOCAL INDICATORS ---
+    # --- LOWER EXPANSION: STANDARD PRICE PLOT ENGINE ---
     if not df_chart.empty:
         st.markdown("---")
-        st.subheader("📈 Technical Analysis Terminal Layer (6-Month Horizon)")
+        st.subheader("📈 Pricing Timeline (6-Month Horizon)")
         
-        c_tab1, c_tab2 = st.tabs(["Candlestick Overlay Engine", "Momentum Oscillator (RSI)"])
+        fig_tech = go.Figure()
+        # Clean standard daily closing historical line trace
+        fig_tech.add_trace(go.Scatter(
+            x=df_chart['Date'], 
+            y=df_chart['Close'], 
+            mode='lines',
+            name='Closing Price',
+            line=dict(color='#1B5E20', width=2.5)
+        ))
         
-        with c_tab1:
-            fig_tech = go.Figure()
-            # Historical Candlesticks
-            fig_tech.add_trace(go.Candlestick(
-                x=df_chart['Date'], open=df_chart['Open'], high=df_chart['High'],
-                low=df_chart['Low'], close=df_chart['Close'], name="Market Price"
-            ))
-            # Locally Computed Trends
-            fig_tech.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['SMA_20'], name='20-Day SMA', line=dict(color='#FF9100', width=1)))
-            fig_tech.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['SMA_50'], name='50-Day SMA', line=dict(color='#2979FF', width=1.5)))
-            
-            # Bollinger Bands Channels
-            fig_tech.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['BB_Upper'], name='BB Upper', line=dict(color='rgba(150,150,150,0.4)', dash='dash')))
-            fig_tech.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['BB_Lower'], name='BB Lower', line=dict(color='rgba(150,150,150,0.4)', dash='dash'), fill='tonexty', fillcolor='rgba(200,200,200,0.1)'))
-            
-            fig_tech.update_layout(height=450, xaxis_rangeslider_visible=False, margin=dict(l=40, r=40, t=10, b=10), yaxis=dict(title="Price (USD)"))
-            st.plotly_chart(fig_tech, use_container_width=True)
-            
-        with c_tab2:
-            fig_rsi = go.Figure()
-            fig_rsi.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['RSI'], name='RSI (14)', line=dict(color='#7B1FA2', width=2)))
-            fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
-            fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
-            fig_rsi.update_layout(height=230, yaxis=dict(range=[0, 100], title="Oscillator Units"), margin=dict(l=40, r=40, t=10, b=10))
-            st.plotly_chart(fig_rsi, use_container_width=True)
+        fig_tech.update_layout(
+            height=400, 
+            margin=dict(l=40, r=40, t=10, b=10), 
+            yaxis=dict(title="Price (USD)")
+        )
+        st.plotly_chart(fig_tech, use_container_width=True)
 
 # --- TRUE AUTOMATED REFRESH PIPELINE ---
 @st.fragment
