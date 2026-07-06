@@ -6,8 +6,8 @@ import pandas as pd
 import numpy as np
 
 # --- 1. CONFIGURATION & APP INITIALIZATION ---
-st.set_page_config(layout="wide", page_title="Institutional Quant Terminal")
-st.title("⚡ Institutional Quant Terminal")
+st.set_page_config(layout="wide", page_title="JL Quant")
+st.title("⚡ JL Quant")
 
 # --- WATCHLIST & TICKER MANAGEMENT ---
 st.sidebar.header("Navigation & Watchlist")
