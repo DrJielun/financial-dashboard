@@ -16,13 +16,16 @@ ticker_symbol = st.sidebar.text_input("Enter Stock Ticker:", value="AAPL").upper
 refresh_rate = st.sidebar.slider("Auto-Refresh Interval (Seconds):", min_value=10, max_value=300, value=30)
 st.sidebar.caption(f"🔄 Market data auto-refreshing every {refresh_rate} seconds.")
 
-# --- LEGITIMATE MARKET DATA ENGINE ---
+# --- LEGITIMATE DATA ENGINE (REPLACES FAKE MATH HASHES) ---
 @st.cache_data(ttl=refresh_rate)  
-def fetch_real_market_data(ticker):
+def fetch_real_market_workspace(ticker):
     try:
         stock_obj = yf.Ticker(ticker)
+        # Fetch 6 months of daily historical chart records
         hist_df = stock_obj.history(period="6m")
+        # Fetch authentic real-time financial fundamentals matrix
         info_dict = stock_obj.info
+        
         if hist_df.empty or not info_dict:
             return None, None
         return hist_df, info_dict
@@ -30,7 +33,7 @@ def fetch_real_market_data(ticker):
         return None, None
 
 # Execute data fetch
-df_chart, info_matrix = fetch_real_market_data(ticker_symbol)
+df_chart, info_matrix = fetch_real_market_workspace(ticker_symbol)
 
 # --- UI WORKSPACE RENDERING ---
 if df_chart is not None and info_matrix is not None:
@@ -49,7 +52,7 @@ if df_chart is not None and info_matrix is not None:
     high_52 = float(df_chart['High'].max())
     low_52 = float(df_chart['Low'].min())
 
-    # 2. REAL ANALYTICAL PROFILE MATRIX GENERATOR (No Fake Hashes)
+    # 2. AUTHENTIC FINANCIAL PROFILE MATRIX GENERATOR (All Fake Hash Code Removed)
     pe_base = info_matrix.get('trailingPE')
     ps_base = info_matrix.get('priceToSalesTrailing12Months')
     pb_base = info_matrix.get('priceToBook')
@@ -127,7 +130,7 @@ if df_chart is not None and info_matrix is not None:
         
         categories = ['Predictability', 'Profitability', 'Growth', 'Financial Strength', 'Valuation']
         
-        # Symmetrically maps scorecard metrics out of 5 based on live pricing momentum
+        # Symmetrically maps scorecard metrics out of 5 based on actual live profile constants
         gm_check = gross_margin if gross_margin is not None else 0.0
         pe_check = pe_base if pe_base is not None else 30.0
         beta_check = beta_base if beta_base is not None else 1.0
