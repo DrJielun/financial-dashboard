@@ -303,7 +303,7 @@ if summary:
             fig_rsi.update_layout(height=250, yaxis=dict(range=[0, 100], title="Oscillator Units"), margin=dict(l=40, r=40, t=10, b=10))
             st.plotly_chart(fig_rsi, use_container_width=True)
 
-# --- TRUE PERIODIC AUTO-REFRESH TRIGGER (FRAGMENT LOOP) ---
+# --- TRUE PERIODIC AUTO-REFRESH TRIGGER TRIGGER (FRAGMENT LOOP) ---
 @st.fragment
 def auto_refresh_executor():
     import time
