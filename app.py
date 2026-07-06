@@ -9,7 +9,7 @@ st.set_page_config(layout="wide", page_title="Stock Analysis Dashboard")
 
 # --- PASTE YOUR API KEY HERE ---
 # Replace the text inside the quotes with your actual 32-character FMP API key
-API_KEY = "RnSDMMwDXfmZfoSP7uzcN4Ok5dZYVHSz" 
+API_KEY = RnSDMMwDXfmZfoSP7uzcN4Ok5dZYVHSz
 
 # --- SAFE DATA FETCHING ENGINE (CACHED) ---
 @st.cache_data(ttl=600)  
