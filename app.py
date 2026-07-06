@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 st.set_page_config(layout="wide")
 
 # IMPORTANT: Put your FMP API Key here
-API_KEY = TLPmlPmVfCtAJdV4mDDn3CrciCnxQtRd 
+API_KEY = "TLPmlPmVfCtAJdV4mDDn3CrciCnxQtRd" 
 
 @st.cache_data(ttl=600) # Cache responses for 10 minutes to save API requests
 def fetch_fmp_data(ticker):
