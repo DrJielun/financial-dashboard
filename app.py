@@ -11,8 +11,11 @@ st.sidebar.header("Dashboard Controls")
 st.sidebar.markdown("🚀 Type any active stock ticker symbol (e.g., NVDA, TSM, AAPL, AMD, MSFT).")
 ticker_symbol = st.sidebar.text_input("Enter Stock Ticker:", value="NVDA").upper().strip()
 
+refresh_rate = st.sidebar.slider("Auto-Refresh Interval (Seconds):", min_value=10, max_value=300, value=30)
+st.sidebar.caption(f"🔄 Market data auto-refreshing every {refresh_rate} seconds.")
+
 # --- REAL-TIME DATA ENGINE (UNBLOCKED PUBLIC GATEWAY MIRROR) ---
-@st.cache_data(ttl=60)  
+@st.cache_data(ttl=refresh_rate)  
 def fetch_real_live_market_data(ticker):
     # Utilizing the query2 mirror to completely bypass authentication cookie blocks on public cloud servers
     url = f"https://query2.finance.yahoo.com/v7/finance/quote?symbols={ticker}"
@@ -36,20 +39,34 @@ live_meta = fetch_real_live_market_data(ticker_symbol)
 
 # --- UI WORKSPACE RENDERING ---
 if live_meta is not None:
-    # 1. VISUAL METADATA PARSING
+    # 1. VISUAL METADATA PARSING & MARKET STATE PRICE HANDLING
     company_name = live_meta.get('longName', f"{ticker_symbol} Corporation")
     exchange = live_meta.get('exchange', 'NASDAQ/NYSE')
+    market_state = live_meta.get('marketState', 'REGULAR').upper()
     
-    current_price = live_meta.get('regularMarketPrice')
-    prev_close = live_meta.get('regularMarketPreviousClose')
-    
-    if current_price is None:
-        current_price = prev_close or 100.00
-    if prev_close is None:
-        prev_close = current_price
+    # DYNAMIC "AT CLOSE" STATE CHECK: If market session isn't live, pull post/pre close price points
+    if market_state in ['POST', 'POSTPOST', 'CLOSED'] and live_meta.get('postMarketPrice'):
+        current_price = live_meta.get('postMarketPrice')
+        price_change = live_meta.get('postMarketChange', 0.0)
+        price_change_pct = live_meta.get('postMarketChangePercent', 0.0)
+        status_tag = f"🔴 Closed / At Close Summary"
+    elif market_state in ['PRE', 'PREPRE'] and live_meta.get('preMarketPrice'):
+        current_price = live_meta.get('preMarketPrice')
+        price_change = live_meta.get('preMarketChange', 0.0)
+        price_change_pct = live_meta.get('preMarketChangePercent', 0.0)
+        status_tag = f"🟡 Pre-Market Interval"
+    else:
+        current_price = live_meta.get('regularMarketPrice')
+        prev_close = live_meta.get('regularMarketPreviousClose')
         
-    price_change = live_meta.get('regularMarketChange', current_price - prev_close)
-    price_change_pct = live_meta.get('regularMarketChangePercent', (price_change / prev_close) * 100 if prev_close else 0.0)
+        if current_price is None:
+            current_price = prev_close or 100.00
+        if prev_close is None:
+            prev_close = current_price
+            
+        price_change = live_meta.get('regularMarketChange', current_price - prev_close)
+        price_change_pct = live_meta.get('regularMarketChangePercent', (price_change / prev_close) * 100 if prev_close else 0.0)
+        status_tag = f"🟢 Regular Live Trading Session"
     
     # 2. EXTRACT CORE VALUATION STRATIFICATIONS
     pe_base = live_meta.get('trailingPE')
@@ -61,7 +78,7 @@ if live_meta is not None:
     div_yield = live_meta.get('trailingAnnualDividendYield')
     forward_pe = live_meta.get('forwardPE')
     
-    # Financial Statement nodes are safely flagged as None to display N/A without layout crashes
+    # Financial Statement nodes safely flagged as None to display N/A without layout crashes
     total_debt = None
     ebitda_margin = None
     gross_margin = None
@@ -87,12 +104,12 @@ if live_meta is not None:
     # 1. VISUAL HEADER BLOCK
     st.caption(f"Financial Market Asset • Global Trading Workspace")
     st.title(f"({ticker_symbol}) {company_name}")
-    st.caption(f"Exchange Forum: {exchange} | 🟢 Live Price Validation Active")
+    st.caption(f"Exchange Forum: {exchange} | Status: {status_tag}")
 
     col_h1, col_h2 = st.columns([2, 5])
     with col_h1:
         st.metric(
-            label="Current Price (USD)", 
+            label="Selected Session Price (USD)", 
             value=f"${current_price:,.2f}", 
             delta=f"{price_change:+.2f} ({price_change_pct:+.2f}%)"
         )
@@ -174,3 +191,12 @@ else:
     # --- TRUE ERROR STATE RENDERER ---
     st.error(f"❌ Error: Fundamental market profile data for ticker '{ticker_symbol}' could not be resolved.")
     st.info("Please verify the ticker formatting stands accurate against standard active exchange parameters (e.g., NVDA, AMD, MSFT, TSM, AAPL).")
+
+# --- TRUE AUTOMATED REFRESH PIPELINE ---
+@st.fragment
+def auto_refresh_executor():
+    import time
+    time.sleep(refresh_rate)
+    st.rerun()
+
+auto_refresh_executor()
