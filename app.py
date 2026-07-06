@@ -64,7 +64,7 @@ def fetch_longlived_metadata(ticker_str):
         "eps_growth": None, "rev_growth": None, "debt_equity": None, "current_ratio": None,
         "marketCap": None, "beta": None, "avg_volume": None, "fiftyTwoWeekHigh": None,
         "fiftyTwoWeekLow": None, "dividendYield": None, "sharesOutstanding": None,
-        "floatShares": None, "shortInterest": None, "next_earnings": "N/A"
+        "floatShares": None, "shortInterest": None
     }
     try:
         t = yf.Ticker(ticker_str)
@@ -92,10 +92,6 @@ def fetch_longlived_metadata(ticker_str):
             payload["sharesOutstanding"] = info.get("sharesOutstanding")
             payload["floatShares"] = info.get("floatShares")
             payload["shortInterest"] = info.get("shortPercentOfFloat")
-            
-        calendar = getattr(t, "calendar", None)
-        if calendar is not None and not calendar.empty and "Earnings Date" in calendar.index:
-            payload["next_earnings"] = str(calendar.loc["Earnings Date"].iloc[0].date())
     except Exception:
         pass
     return payload
@@ -273,17 +269,6 @@ if raw_history is not None and info_payload is not None:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("### 🗓️ Institutional Macro Calendar (July 2026)")
-        cal_data = [
-            {"Date": "2026-07-02", "Indicator / Event": "US Non-Farm Payrolls (NFP)", "Impact": "🔥 Critical (Actual: 57K vs 115K Exp)"},
-            {"Date": "2026-07-06", "Indicator / Event": "ISM Services PMI Output", "Impact": "📈 High Volatility (Actual: 54.5)"},
-            {"Date": "2026-07-08", "Indicator / Event": "FOMC Meeting Minutes Release", "Impact": "🏦 Critical Policy Signal"},
-            {"Date": "2026-07-14", "Indicator / Event": "Consumer Price Index (CPI) Inflation YoY", "Impact": "🔥 Macro Pivot Event"},
-            {"Date": "2026-07-17", "Indicator / Event": "U.S. Equity Options Expiration (OPEX)", "Impact": "⚡ Volume / Liquidity Surge"},
-            {"Date": "2026-07-28", "Indicator / Event": "FOMC July Policy Rate Decision Day", "Impact": "🔥 Key Interest Rate Pivot"}
-        ]
-        st.table(pd.DataFrame(cal_data))
-
     with fundamental_sidebar:
         st.markdown("### 📋 Quant Fundamentals")
         def fmt_v(v, f="num"):
@@ -323,10 +308,6 @@ if raw_history is not None and info_payload is not None:
         de_str = f"{de_val:.2f}%" if (pd.notna(de_val) and de_val > 5.0) else fmt_v(de_val, "pct")
         st.markdown(f"**Debt to Equity:** `{de_str}`")
         st.markdown(f"**Current Ratio:** `{fmt_v(fnd['current_ratio'])}`")
-        
-        st.markdown("---")
-        st.markdown("#### **Macro Calendar Forecasts**")
-        st.markdown(f"**Next Expected Earnings:** `{fnd['next_earnings']}`")
 
     st.markdown("---")
     st.caption("Terminal analysis complete. Data refreshed and cached locally.")
