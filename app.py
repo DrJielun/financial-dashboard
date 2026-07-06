@@ -71,58 +71,111 @@ if ticker_symbol:
             ext_price = info_payload.get("preMarketPrice") or regular_close
             change = ext_price - regular_close
             pct_change = (change / regular_close) * 100 if regular_close else 0.0
-            
             st.warning(f"🌅 SESSION ACTIVE: PRE-MARKET")
             st.metric(label=f"Pre-Market Valuation ({currency})", value=f"${ext_price:,.2f}", delta=f"${change:+.2f} ({pct_change:+.2f}%) vs Regular Close")
-            
         elif market_state == "POST":
             ext_price = info_payload.get("postMarketPrice") or regular_close
             change = ext_price - regular_close
             pct_change = (change / regular_close) * 100 if regular_close else 0.0
-            
             st.info(f"🌙 SESSION ACTIVE: POST-MARKET")
             st.metric(label=f"Post-Market Valuation ({currency})", value=f"${ext_price:,.2f}", delta=f"${change:+.2f} ({pct_change:+.2f}%) vs Regular Close")
-            
         elif market_state == "REGULAR":
             current_live = info_payload.get("currentPrice") or regular_close
             change = current_live - prev_close
             pct_change = (change / prev_close) * 100 if prev_close else 0.0
-            
             st.success(f"🟢 SESSION ACTIVE: REGULAR MARKET (OPEN)")
             st.metric(label=f"Live Trading Price ({currency})", value=f"${current_live:,.2f}", delta=f"${change:+.2f} ({pct_change:+.2f}%) vs Yesterday Close")
-            
         else:
             final_price = info_payload.get("postMarketPrice") or regular_close
             change = final_price - prev_close
             pct_change = (change / prev_close) * 100 if prev_close else 0.0
-            
             st.error(f"🛑 SESSION ACTIVE: MARKET CLOSED")
             st.metric(label=f"Final Closing Price ({currency})", value=f"${final_price:,.2f}", delta=f"${change:+.2f} ({pct_change:+.2f}%) Daily Session Net Change")
+
+        # --- TECHNICAL COMPUTATION & MATRIX EVALUATION ---
+        st.markdown("---")
+        st.subheader("📊 Automated Algorithmic Evaluation")
+        
+        # Pull latest generated series values
+        latest_close = df_history['Close'].iloc[-1]
+        latest_rsi = df_history['RSI'].iloc[-1]
+        latest_upper_bb = df_history['BB_Upper'].iloc[-1]
+        latest_lower_bb = df_history['BB_Lower'].iloc[-1]
+        latest_sma50 = df_history['SMA50'].iloc[-1]
+        latest_sma200 = df_history['SMA200'].iloc[-1]
+        
+        # Scoring tracks (-1 for Bearish, 0 for Neutral, +1 for Bullish)
+        scores = []
+        evaluations = {}
+        
+        # A. Evaluate RSI (Momentum Oscillator)
+        if latest_rsi > 70:
+            evaluations['RSI'] = ("🔴 Overbought (Sell Warning)", -1)
+        elif latest_rsi < 30:
+            evaluations['RSI'] = ("🟢 Oversold (Buy Opportunity)", 1)
+        else:
+            evaluations['RSI'] = ("⚪ Neutral Range", 0)
+            
+        # B. Evaluate Bollinger Bands (Volatility Extents)
+        if latest_close >= latest_upper_bb:
+            evaluations['BB'] = ("🔴 Price Overextended (Upper Band Broken)", -1)
+        elif latest_close <= latest_lower_bb:
+            evaluations['BB'] = ("🟢 Price Undervalued (Lower Band Broken)", 1)
+        else:
+            evaluations['BB'] = ("⚪ Price Stable within Bands", 0)
+            
+        # C. Evaluate SMA Alignment (Macro Trend Structure)
+        if latest_sma50 > latest_sma200:
+            evaluations['SMA'] = ("🟢 Structural Uptrend (Golden Cross Active)", 1)
+        elif latest_sma50 < latest_sma200:
+            evaluations['SMA'] = ("🔴 Structural Downtrend (Death Cross Active)", -1)
+        else:
+            evaluations['SMA'] = ("⚪ Trend Converging", 0)
+            
+        # Compile score totals
+        total_score = evaluations['RSI'][1] + evaluations['BB'][1] + evaluations['SMA'][1]
+        
+        # Determine aggregate outcome classification
+        if total_score >= 2:
+            macro_signal = "🟢 STRONG BUY"
+            ui_status_box = st.success
+        elif total_score == 1:
+            macro_signal = "🟢 MODERATE BUY"
+            ui_status_box = st.success
+        elif total_score == -1:
+            macro_signal = "🔴 MODERATE SELL"
+            ui_status_box = st.error
+        elif total_score <= -2:
+            macro_signal = "🔴 STRONG SELL"
+            ui_status_box = st.error
+        else:
+            macro_signal = "⚪ NEUTRAL / HOLD"
+            ui_status_box = st.info
+            
+        # Display Combined Macro Result Matrix
+        ui_status_box(f"### **Macro Technical Matrix Consensus: {macro_signal}**")
+        
+        # Display Individual Breakdown Tables
+        col_m1, col_m2, col_m3 = st.columns(3)
+        col_m1.metric("Current RSI (14)", f"{latest_rsi:.1f}", evaluations['RSI'][0], delta_color="off")
+        col_m2.metric("Bollinger Band Boundary", f"${latest_close:,.2f}", evaluations['BB'][0], delta_color="off")
+        col_m3.metric("Macro Trend Vector", "SMA Alignment", evaluations['SMA'][0], delta_color="off")
 
         # --- HIGH-PERFORMANCE INTERACTIVE GRAPH ---
         st.markdown("---")
         st.caption("📈 Technical Studio: Bollinger Bands, Moving Averages, and RSI")
         
-        # Build 2-row subplot setup (Row 1: Price Actions + Overlays, Row 2: RSI Oscillator)
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08, row_heights=[0.7, 0.3])
         
-        # --- ROW 1: CORE PRICE ACTION + OVERLAYS ---
-        # Closing Price
+        # Price Plots & Line Overlays
         fig.add_trace(go.Scatter(x=df_history.index, y=df_history['Close'], mode='lines', name='Closing Price', line=dict(color='#1565C0', width=2)), row=1, col=1)
-        # SMA 50
         fig.add_trace(go.Scatter(x=df_history.index, y=df_history['SMA50'], mode='lines', name='50-Day SMA', line=dict(color='#FBC02D', width=1.5, dash='dash')), row=1, col=1)
-        # SMA 200
         fig.add_trace(go.Scatter(x=df_history.index, y=df_history['SMA200'], mode='lines', name='200-Day SMA', line=dict(color='#D32F2F', width=1.5, dash='dot')), row=1, col=1)
-        
-        # Bollinger Upper Band (Updated color parameters to Vibrant Financial Green)
         fig.add_trace(go.Scatter(x=df_history.index, y=df_history['BB_Upper'], mode='lines', name='BB Upper (20,2)', line=dict(color='#00E676', width=1.2)), row=1, col=1)
-        # Bollinger Lower Band (Updated color parameters to Vibrant Financial Green + Subtle Transparent Fill)
         fig.add_trace(go.Scatter(x=df_history.index, y=df_history['BB_Lower'], mode='lines', name='BB Lower (20,2)', line=dict(color='#00E676', width=1.2), fill='tonexty', fillcolor='rgba(0, 230, 118, 0.03)'), row=1, col=1)
         
-        # --- ROW 2: RSI 14 OSCILLATOR ---
-        # RSI Trace
+        # RSI Tracking Traces
         fig.add_trace(go.Scatter(x=df_history.index, y=df_history['RSI'], mode='lines', name='RSI (14)', line=dict(color='#00E676', width=1.5)), row=2, col=1)
-        # Technical Indicator Boundary Markers (30/70 thresholds)
         fig.add_hline(y=70, line_dash="dash", line_color="rgba(211, 47, 47, 0.6)", row=2, col=1)
         fig.add_hline(y=30, line_dash="dash", line_color="rgba(76, 175, 80, 0.6)", row=2, col=1)
 
