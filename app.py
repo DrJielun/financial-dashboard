@@ -2,60 +2,72 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime
 
-# Set page to wide mode to match the original dashboard image layout
+# Set page to wide mode to match the layout
 st.set_page_config(layout="wide", page_title="Stock Analysis Dashboard")
 
 # --- PASTE YOUR API KEY HERE ---
-# Replace the text inside the quotes with your actual 32-character FMP API key
-API_KEY = "RnSDMMwDXfmZfoSP7uzcN4Ok5dZYVHSz"
+# Make sure your 32-character key is inside the quotes with no spaces
+API_KEY = "RnSDMMwDXfmZfoSP7uzcN4Ok5dZYVHSz" 
 
-# --- SAFE DATA FETCHING ENGINE (CACHED) ---
+# --- DATA FETCHING ENGINE (FREE TIER COMPATIBLE) ---
 @st.cache_data(ttl=600)  
 def fetch_stock_data(ticker):
+    # Utilizing endpoints fully authorized on the standard free tier
     profile_url = f"https://financialmodelingprep.com/api/v3/profile/{ticker}?apikey={API_KEY}"
     quote_url = f"https://financialmodelingprep.com/api/v3/quote/{ticker}?apikey={API_KEY}"
-    metrics_url = f"https://financialmodelingprep.com/api/v3/key-metrics-ttm/{ticker}?apikey={API_KEY}"
     
     try:
         profile_res = requests.get(profile_url).json()
         quote_res = requests.get(quote_url).json()
-        metrics_res = requests.get(metrics_url).json()
         
-        # If API rejects the key or the symbol is restricted on the free tier:
+        # Guard clause: Check for explicit API error messages
         if isinstance(profile_res, dict) and "Error Message" in profile_res:
-            return None, None, None
+            return None, None
             
-        if not profile_res or not quote_res or not metrics_res:
-            return None, None, None
+        # Guard clause: Verify array responses are populated
+        if not profile_res or not quote_res:
+            return None, None
             
-        return profile_res[0], quote_res[0], metrics_res[0]
+        return profile_res[0], quote_res[0]
     except Exception:
-        return None, None, None
+        return None, None
 
 # --- SIDEBAR INPUT ---
 st.sidebar.header("Dashboard Controls")
-st.sidebar.markdown("💡 *Free FMP keys only allow symbols like AAPL, TSLA, MSFT, NVDA.*")
+st.sidebar.markdown("💡 *Free keys support sandbox symbols like AAPL, TSLA, MSFT, NVDA.*")
 ticker_symbol = st.sidebar.text_input("Enter Stock Ticker:", value="AAPL").upper()
 
 # Fetch data
-profile, quote, metrics = fetch_stock_data(ticker_symbol)
+profile, quote = fetch_stock_data(ticker_symbol)
 
-# Determine if we are using live data or mock data fallback
+# Determine if using live data or falling back to mock metrics safely
 is_mock_data = False
-if profile is None or quote is None or metrics is None:
+if profile is None or quote is None:
     is_mock_data = True
-    # Generate mock fallback data matching the XOM picture metrics
-    profile = {"companyName": f"{ticker_symbol} Corp (Demo Mode)", "sector": "Energy", "industry": "Oil & Gas Integrated", "exchangeShortName": "NYSE", "beta": 0.50}
-    quote = {"price": 109.23, "change": 0.70, "changesPercentage": 0.64, "marketCap": 435000000000, "pe": 15.39}
-    metrics = {"priceToSalesRatioTTM": 1.43, "returnOnEquityTTM": 0.1168, "returnOnCapitalEmployedTTM": 0.1032, "pegRatioTTM": 1.21, "grossProfitMarginTTM": 0.2205, "priceToBookRatioTTM": 1.80}
+    profile = {
+        "companyName": f"{ticker_symbol} Corp (Simulation)", 
+        "sector": "Energy", 
+        "industry": "Oil & Gas Integrated", 
+        "exchangeShortName": "NYSE", 
+        "beta": 0.50,
+        "priceToSalesTrailing12Months": 1.43,
+        "grossProfitMargin": 0.2205
+    }
+    quote = {
+        "price": 109.23, 
+        "change": 0.70, 
+        "changesPercentage": 0.64, 
+        "marketCap": 435000000000, 
+        "pe": 15.39,
+        "yearHigh": 120.00,
+        "yearLow": 95.00
+    }
 
 # --- RENDER UI LAYOUT ---
 
-# Warning banner if the app is in demo mode
 if is_mock_data:
-    st.warning("⚠️ Running in Demo Mode. The API rejected the key or ticker. Make sure you replaced 'YOUR_ACTUAL_FMP_API_KEY_HERE' in the code, or try entering 'AAPL'.")
+    st.warning("⚠️ Running in Demo Mode. The API rejected the key or ticker symbol. Try entering 'AAPL'.")
 
 # 1. HEADER BLOCK
 st.caption(f"{profile.get('sector', 'N/A')}  •  {profile.get('industry', 'N/A')}")
@@ -75,7 +87,7 @@ with col_h1:
 with col_h2:
     fair_value = price * 0.92
     st.markdown(f"**Tag Evaluation:** `Narrow Moat` | `OracleValue™: {fair_value:.2f}`")
-    st.caption(f"Data Mode: {'🔴 Simulating Data' if is_mock_data else '🟢 Live FMP Feed'}")
+    st.caption(f"Data Connection State: {'🔴 Simulated Backup' if is_mock_data else '🟢 Live FMP Feed'}")
 
 st.markdown("---")
 
@@ -86,39 +98,36 @@ left_column, right_column = st.columns([1, 1])
 with left_column:
     st.subheader("Key Ratios & Metrics")
     
+    # Deriving core metrics from free-tier friendly endpoints
     raw_metrics = [
         ("Price to Earnings Ratio (TTM)", quote.get('pe')),
-        ("Price to Sales Ratio (TTM)", metrics.get('priceToSalesRatioTTM')),
-        ("Return on Equity (TTM)", metrics.get('returnOnEquityTTM')),
-        ("Return on Invested Capital (TTM)", metrics.get('returnOnCapitalEmployedTTM')),
-        ("PEG Ratio Value", metrics.get('pegRatioTTM')),
-        ("Beta Alignment Value", profile.get('beta')),
-        ("Market Cap", quote.get('marketCap')),
-        ("Enterprise Margin Proxy", metrics.get('grossProfitMarginTTM') * 0.85 if metrics.get('grossProfitMarginTTM') else 0.18), 
-        ("Gross Profit Margin (TTM)", metrics.get('grossProfitMarginTTM')),
-        ("Price to Book Ratio", metrics.get('priceToBookRatioTTM'))
+        ("Price to Sales Ratio (TTM)", profile.get('priceToSalesTrailing12Months', 1.25)),
+        ("Beta Volatility Coeff.", profile.get('beta')),
+        ("Market Capitalization", quote.get('marketCap')),
+        ("52-Week High Target", quote.get('yearHigh')),
+        ("52-Week Low Target", quote.get('yearLow'))
     ]
     
     formatted_rows = []
     for name, val in raw_metrics:
         if val is None:
             formatted_val = "N/A"
-        elif "Margin" in name or "Return" in name:
-            formatted_val = f"{val * 100:.2f}%"
         elif "Cap" in name:
             formatted_val = f"${val / 1e9:,.2f}B"
+        elif "High" in name or "Low" in name:
+            formatted_val = f"${val:,.2f}"
         else:
             formatted_val = f"{val:.2f}"
         formatted_rows.append({"Metric": name, "Value": formatted_val})
         
     df_all_metrics = pd.DataFrame(formatted_rows)
     
-    # Render two side-by-side mini dataframes to recreate the image layout
+    # Symmetrical breakdown split
     sub_col1, sub_col2 = st.columns(2)
     with sub_col1:
-        st.dataframe(df_all_metrics.iloc[:5], hide_index=True, use_container_width=True)
+        st.dataframe(df_all_metrics.iloc[:3], hide_index=True, use_container_width=True)
     with sub_col2:
-        st.dataframe(df_all_metrics.iloc[5:], hide_index=True, use_container_width=True)
+        st.dataframe(df_all_metrics.iloc[3:], hide_index=True, use_container_width=True)
 
 # --- RIGHT WORKSPACE: RATING PROFILE LINE CHART ---
 with right_column:
@@ -126,11 +135,11 @@ with right_column:
     
     categories = ['Predictability', 'Profitability', 'Growth', 'OracleMoat™', 'Financial Strength', 'Valuation']
     
-    # Symmetrically calculate quality metrics out of 5 to feed the rating chart
-    prof_score = 5 if (metrics.get('grossProfitMarginTTM', 0) > 0.20) else 3
-    valuation_score = 4 if (quote.get('pe', 20) < 18) else 2
+    # Constructing quality profile chart rules
+    pe_val = quote.get('pe', 20) if quote.get('pe') else 20
+    valuation_score = 5 if pe_val < 15 else (3 if pe_val < 25 else 1)
     
-    scores = [3, prof_score, 2, 4, 4, valuation_score] 
+    scores = [3, 4, 2, 4, 4, valuation_score] 
     
     fig_profile = go.Figure()
     fig_profile.add_trace(go.Scatter(
