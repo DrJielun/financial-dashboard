@@ -273,17 +273,6 @@ if raw_history is not None and info_payload is not None:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("### 🗓️ Institutional Macro Calendar (July 2026)")
-        cal_data = [
-            {"Date": "2026-07-02", "Indicator / Event": "US Non-Farm Payrolls (NFP)", "Impact": "🔥 Critical (Actual: 57K vs 115K Exp)"},
-            {"Date": "2026-07-06", "Indicator / Event": "ISM Services PMI Output", "Impact": "📈 High Volatility (Actual: 54.5)"},
-            {"Date": "2026-07-08", "Indicator / Event": "FOMC Meeting Minutes Release", "Impact": "🏦 Critical Policy Signal"},
-            {"Date": "2026-07-14", "Indicator / Event": "Consumer Price Index (CPI) Inflation YoY", "Impact": "🔥 Macro Pivot Event"},
-            {"Date": "2026-07-17", "Indicator / Event": "U.S. Equity Options Expiration (OPEX)", "Impact": "⚡ Volume / Liquidity Surge"},
-            {"Date": "2026-07-28", "Indicator / Event": "FOMC July Policy Rate Decision Day", "Impact": "🔥 Key Interest Rate Pivot"}
-        ]
-        st.table(pd.DataFrame(cal_data))
-
     with fundamental_sidebar:
         st.markdown("### 📋 Quant Fundamentals")
         def fmt_v(v, f="num"):
