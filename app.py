@@ -127,7 +127,6 @@ def compute_technical_indicators(df_history, df_bench):
     df['BB_Upper'] = df['MA20'] + (2 * df['Std20'])
     df['BB_Lower'] = df['MA20'] - (2 * df['Std20'])
     df['Vol_Bandwidth'] = np.where(df['MA20'] > 0, (df['BB_Upper'] - df['BB_Lower']) / df['MA20'], np.nan)
-    
     df['BB_Squeeze'] = df['Vol_Bandwidth'] < df['Vol_Bandwidth'].rolling(window=min(126, len(df)), min_periods=1).quantile(0.20)
     
     delta = df['Close'].diff()
@@ -153,7 +152,6 @@ def compute_technical_indicators(df_history, df_bench):
     df['PlusDI'] = 100 * (pd.Series(plus_dm, index=df.index).ewm(alpha=1/14, adjust=False).mean() / df['ATR'].replace(0, np.nan))
     df['MinusDI'] = 100 * (pd.Series(minus_dm, index=df.index).ewm(alpha=1/14, adjust=False).mean() / df['ATR'].replace(0, np.nan))
     df['ADX'] = ((abs(df['PlusDI'] - df['MinusDI']) / (df['PlusDI'] + df['MinusDI']).replace(0, np.nan)) * 100).ewm(alpha=1/14, adjust=False).mean()
-    
     df['RVOL'] = df['Volume'] / df['Volume'].rolling(window=min(20, len(df))).mean().replace(0, np.nan)
     
     stock_ret = (1 + df['Close'].pct_change()).cumprod()
@@ -172,7 +170,6 @@ if raw_history is not None and info_payload is not None:
     
     latest = df_view.iloc[-1]
     sma_available = pd.notna(latest["SMA50"]) and pd.notna(latest["SMA200"])
-    latest_squeeze = latest['BB_Squeeze']
     
     latest_close = latest['Close']
     prev_close = info_payload['prev_close']
@@ -194,78 +191,38 @@ if raw_history is not None and info_payload is not None:
         col_h4.metric(f"Benchmark Alpha ({benchmark_sym})", f"{latest['Alpha_Strength']*100:+.2f}%", "Geometric Delta")
 
         st.markdown("---")
-        latest_rsi = latest['RSI']
-        latest_upper_bb = latest['BB_Upper']
-        latest_lower_bb = latest['BB_Lower']
-        latest_adx = latest['ADX']
         
-        if sma_available:
-            trend_factor = np.clip(((latest['SMA50'] - latest['SMA200']) / latest['SMA200']) * 10, -1.0, 1.0)
-        else:
-            trend_factor = 0.0
-
-        norm_rsi = ((latest_rsi - 50) / 20) if pd.notna(latest_rsi) else 0.0
-        norm_macd = 1.0 if latest['MACD'] > latest['MACD_Signal'] else -1.0
-        momentum_factor = np.clip((0.6 * norm_rsi) + (0.4 * norm_macd), -1.0, 1.0)
-
-        pct_b = (latest_close - latest_lower_bb) / (latest_upper_bb - latest_lower_bb) if latest_upper_bb != latest_lower_bb else 0.5
-        volatility_factor = np.clip((pct_b - 0.5) * 2, -1.0, 1.0)
-        if pd.notna(latest['Vol_Bandwidth']):
-            volatility_factor *= (latest['Vol_Bandwidth'] * 5)
-        volatility_factor = np.clip(volatility_factor, -1.0, 1.0)
-
-        composite_score = trend_factor + momentum_factor + volatility_factor
-        composite_score *= (1.10 if (pd.notna(latest_adx) and latest_adx > 25.0) else 0.70)
+        # 4-Panel Charting
+        fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03, 
+                            row_heights=[0.40, 0.20, 0.20, 0.20])
         
-        if latest_squeeze: regime_label = "Compression / Volatility Squeeze"
-        elif latest_adx >= 25.0 and trend_factor > 0.3: regime_label = "Strong Bullish Breakout Trend"
-        elif latest_adx >= 25.0 and trend_factor < -0.3: regime_label = "Strong Bearish Distribution Trend"
-        elif latest_rsi > 70.0: regime_label = "Momentum Extension / Mean Reversion Setup"
-        elif latest_rsi < 30.0: regime_label = "Momentum Exhaustion / Mean Reversion Setup"
-        else: regime_label = "Accumulation / Range Bound Drift"
-            
-        if composite_score >= 0.25: render_box = st.success
-        elif composite_score <= -0.25: render_box = st.error
-        else: render_box = st.info
-        render_box(f"#### **Market Regime Classification: {regime_label}** (Composite Signal Score: {composite_score:+.2f})")
-
-        trend_state = "Strong Bullish" if trend_factor > 0.4 else ("Moderate Bullish" if trend_factor > 0 else "Bearish Structure")
-        mom_state = "Expanding Upside" if momentum_factor > 0.3 else ("Weakening / Cool Down" if momentum_factor < -0.3 else "Neutral Inactive")
-        vol_state = "Expanding Bandwidth" if latest['Vol_Bandwidth'] > 0.15 else "Contracting Squeeze"
-        alpha_state = "Outperforming Index" if latest['Alpha_Strength'] > 0 else "Underperforming Benchmark Index"
-        risk_clause = "Overextended near upper Bollinger line boundaries." if pct_b > 0.85 else "Stable trading inside price distribution bands."
-        
-        st.info(f"📋 **Adaptive Regime Overview:**\n"
-                f"* **Trend Vector:** `{trend_state}` | **Momentum Speed:** `{mom_state}`\n"
-                f"* **Volatility Context:** `{vol_state}` | **Alpha Return profile:** `{alpha_state}`\n"
-                f"* **Risk Vector Guard:** {risk_clause}")
-
-        st.markdown("---")
-        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.04, row_heights=[0.50, 0.25, 0.25])
-        
+        # Row 1: Price and Bands
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['BB_Upper'], mode='lines', line=dict(color='rgba(0, 230, 118, 0.25)', width=1), showlegend=False), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['BB_Lower'], mode='lines', line=dict(color='rgba(0, 230, 118, 0.25)', width=1), fill='tonexty', fillcolor='rgba(0, 230, 118, 0.02)', name='Bollinger Bands (20,2)'), row=1, col=1)
-        
-        fig.add_trace(go.Candlestick(x=df_view.index, open=df_view['Open'], high=df_view['High'], low=df_view['Low'], close=df_view['Close'], name='Price Bars'), row=1, col=1)
-        
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['BB_Lower'], mode='lines', line=dict(color='rgba(0, 230, 118, 0.25)', width=1), fill='tonexty', fillcolor='rgba(0, 230, 118, 0.02)', name='BB (20,2)'), row=1, col=1)
+        fig.add_trace(go.Candlestick(x=df_view.index, open=df_view['Open'], high=df_view['High'], low=df_view['Low'], close=df_view['Close'], name='Price'), row=1, col=1)
         if sma_available:
-            fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA50'], mode='lines', name='50-Day SMA', line=dict(color='#FBC02D', width=1.5, dash='dash')), row=1, col=1)
-            fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA200'], mode='lines', name='200-Day SMA', line=dict(color='#D32F2F', width=1.5, dash='dot')), row=1, col=1)
-            
-        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume Traded', marker_color='rgba(33, 150, 243, 0.30)'), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD Line', line=dict(color='#29B6F6', width=1.5)), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD_Signal'], mode='lines', name='MACD Signal', line=dict(color='#AB47BC', width=1.2, dash='dot')), row=2, col=1)
+            fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA50'], mode='lines', name='SMA 50', line=dict(color='#FBC02D', width=1.5, dash='dash')), row=1, col=1)
+            fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA200'], mode='lines', name='SMA 200', line=dict(color='#D32F2F', width=1.5, dash='dot')), row=1, col=1)
         
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['ADX'], mode='lines', name='ADX Strength Line', line=dict(color='#FF9100', width=2.5)), row=3, col=1)
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['PlusDI'], mode='lines', name='+DI Channel', line=dict(color='#00E676', width=1.2, dash='dash')), row=3, col=1)
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MinusDI'], mode='lines', name='-DI Channel', line=dict(color='#FF5252', width=1.2, dash='dot')), row=3, col=1)
+        # Row 2: Volume
+        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume', marker_color='rgba(33, 150, 243, 0.30)'), row=2, col=1)
+        
+        # Row 3: MACD (Histogram, Line, Signal)
+        fig.add_trace(go.Bar(x=df_view.index, y=df_view['MACD_Hist'], name='MACD Hist', marker_color=np.where(df_view['MACD_Hist'] >= 0, '#26A69A', '#EF5350')), row=3, col=1)
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD', line=dict(color='#29B6F6', width=1.5)), row=3, col=1)
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD_Signal'], mode='lines', name='Signal', line=dict(color='#AB47BC', width=1.2, dash='dot')), row=3, col=1)
+        
+        # Row 4: RSI with Thresholds
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['RSI'], mode='lines', name='RSI', line=dict(color='#FFCA28', width=1.5)), row=4, col=1)
+        fig.add_hline(y=70, line_dash="dash", line_color="red", row=4, col=1, line_width=1)
+        fig.add_hline(y=50, line_dash="dot", line_color="gray", row=4, col=1, line_width=1)
+        fig.add_hline(y=30, line_dash="dash", line_color="green", row=4, col=1, line_width=1)
 
         fig.update_layout(
-            height=650, margin=dict(l=20, r=20, t=10, b=10), template="plotly_dark",
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
+            height=850, margin=dict(l=20, r=20, t=10, b=10), template="plotly_dark",
+            hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1),
             xaxis=dict(rangeslider=dict(visible=False)),
-            yaxis=dict(title="Asset Price"), yaxis2=dict(title="Volume / MACD Matrix"), yaxis3=dict(title="DMI Core Tracking Matrix")
+            yaxis=dict(title="Price"), yaxis2=dict(title="Vol"), yaxis3=dict(title="MACD"), yaxis4=dict(title="RSI", range=[0, 100])
         )
         st.plotly_chart(fig, use_container_width=True)
 
