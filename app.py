@@ -113,7 +113,6 @@ def fetch_longlived_metadata(ticker_str):
 def get_raw_market_data(ticker_str, benchmark_str, period_str):
     try:
         stock = yf.Ticker(ticker_str)
-        # Fetch data with sufficient window padding to support indicators on 5-year views
         history = stock.history(period="5y", interval="1d")
         if history.empty or len(history) < 200:
             return None, None, None
@@ -230,6 +229,8 @@ if raw_history is not None and info_payload is not None:
 
         # --- ADVANCED ORTHOGONAL SCORING ENGINE ---
         st.markdown("---")
+        st.subheader("📊 Regime Matrix Evaluation")
+        
         latest_rsi = latest['RSI']
         latest_upper_bb = latest['BB_Upper']
         latest_lower_bb = latest['BB_Lower']
@@ -252,7 +253,6 @@ if raw_history is not None and info_payload is not None:
         # Factor Vector 3: Bandwidth Volatility Scaling Matrix (FIX #5)
         pct_b = (latest_close - latest_lower_bb) / (latest_upper_bb - latest_lower_bb) if latest_upper_bb != latest_lower_bb else 0.5
         volatility_factor = np.clip((pct_b - 0.5) * 2, -1.0, 1.0)
-        # Apply Bandwidth scaling multiplier to accurately track structural breakout expansions
         volatility_factor *= (latest['Vol_Bandwidth'] * 5 if pd.notna(latest['Vol_Bandwidth']) else 1.0)
         volatility_factor = np.clip(volatility_factor, -1.0, 1.0)
 
@@ -263,7 +263,7 @@ if raw_history is not None and info_payload is not None:
         if composite_score >= 0.35: macro_msg, render_box = "🟢 STRONG BULLISH BIAS", st.success
         elif composite_score >= 0.10: macro_msg, render_box = "🟢 MODERATE BULLISH BIAS", st.success
         elif composite_score <= -0.35: macro_msg, render_box = "🔴 STRONG BEARISH BIAS", st.error
-        elif composite_score <= -0.10: macro_msg, render_box = "🔴 MODERATE BEARISH BIAS", st.error
+        elif macro_score <= -0.10: macro_msg, render_box = "🔴 MODERATE BEARISH BIAS", st.error
         else: macro_msg, render_box = "⚪ NEUTRAL MATRIX OVERLAY / RANGE BOUND", st.info
             
         render_box(f"#### **Quantitative Model Analysis: {macro_msg}**")
@@ -308,9 +308,9 @@ if raw_history is not None and info_payload is not None:
         fig.update_layout(height=650, margin=dict(l=20, r=20, t=10, b=10), template="plotly_dark", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis=dict(rangeslider=dict(visible=False)), yaxis=dict(title="Asset Price"), yaxis2=dict(title="Volume / MACD"), yaxis3=dict(title="DMI Core Vector Matrix"))
         st.plotly_chart(fig, use_container_width=True)
 
-    # --- FUNDAMENTAL SIDEBAR MATRIX (FIX #7 & #8) ---
+    # --- FUNDAMENTAL SIDEBAR MATRIX ---
     with fundamental_sidebar:
-        st.markdown("### 📋 Quant Fundamentals")
+        st.markdown("### 📋 Company Fundamentals")
         
         def fmt_v(v, f="num"):
             if v is None or pd.isna(v): return "N/A"
@@ -353,5 +353,49 @@ if raw_history is not None and info_payload is not None:
         st.markdown("---")
         st.markdown("#### **Macro Calendar Forecasts**")
         st.markdown(f"**Next Expected Earnings:** `{fnd['next_earnings']}`")
+
+    # --- SCREENSHOT-READY AI PROMPT SUMMARY EXPORT BLOCK ---
+    st.markdown("---")
+    st.subheader("📸 Screenshot Export Block (AI Prompt Feed)")
+    st.caption("Take a screenshot of this box to feed directly into an AI analyzer for an instant quant strategy breakdown.")
+    
+    # Construct formatting strings inside the box scope
+    def raw_fmt(v, is_pct=False):
+        if v is None or pd.isna(v): return "N/A"
+        return f"{v * 100:.2f}%" if is_pct else f"{v:.2f}"
+
+    st.code(f"""
+==========================================================================================
+QUANT DATA EXPORT TERMINAL SNAPSHOT — ASSET TICKER: {ticker_symbol}
+==========================================================================================
+[PRICE ACTIONS & MARKET REGIMES]
+• Current Close Price: ${latest_close:,.2f} | 1-Day Change Price: {price_change:+.2f} ({pct_change:+.2f}%)
+• Horizon Frame: {selected_tf} | 52-Week Allocation Position Level: {price_position_pct:.1f}%
+• Average True Range (ATR 14): ${latest['ATR']:.2f} | Alpha Performance vs {benchmark_sym}: {latest['Alpha_Strength']*100:+.2f}%
+
+[TECHNICAL METRICS MATRIX]
+• Relative Strength Index (RSI 14): {raw_fmt(latest_rsi)}
+• Average Directional Index (ADX 14): {raw_fmt(latest_adx)} | +DI: {raw_fmt(latest_plus_di)} | -DI: {raw_fmt(latest_minus_di)}
+• MACD Line Output: {raw_fmt(latest['MACD'])} | MACD Signal Alignment: {raw_fmt(latest['MACD_Signal'])} | Hist: {raw_fmt(latest['MACD_Hist'])}
+• Volatility Bandwidth Percent: {raw_fmt(latest['Vol_Bandwidth'], is_pct=True)} | Adaptive BB Squeeze Condition: {latest_squeeze}
+• Long-Term Structure Profile: 50 SMA (${latest['SMA50']:.2f}) vs 200 SMA (${latest['SMA200']:.2f}) -> Available: {sma_available}
+
+[FUNDAMENTAL DATA LOG]
+• Market Capitalization: {raw_fmt(fnd['marketCap'])} | System Beta Risk: {raw_fmt(fnd['beta'])} | Short % of Float: {raw_fmt(fnd['shortInterest'], is_pct=True)}
+• Trailing P/E: {raw_fmt(fnd['pe_trailing'])} | Forward P/E: {raw_fmt(fnd['pe_forward'])} | PEG Growth Ratio: {raw_fmt(fnd['peg'])}
+• Return on Equity (ROE): {raw_fmt(fnd['roe'], is_pct=True)} | Net Profit Margin: {raw_fmt(fnd['net_margin'], is_pct=True)}
+• Revenue Growth YoY: {raw_fmt(fnd['rev_growth'], is_pct=True)} | Earnings Growth YoY: {raw_fmt(fnd['eps_growth'], is_pct=True)}
+• Debt to Equity Ratio: {raw_fmt(fnd['debt_equity'])} | Current Assets Ratio: {raw_fmt(fnd['current_ratio'])}
+• 12M Analyst Target Price Mean: ${raw_fmt(fnd['targetPrice'])} | Next Scheduled Corporate Earnings Date: {fnd['next_earnings']}
+
+[QUANT COMPOSITE CONSENSUS OUTCOME]
+• Raw Composite Score Matrix Factor: {composite_score:+.3f}
+• Final Regime Interpretation Result: {macro_msg}
+==========================================================================================
+PROMPT: Act as an expert quantitative hedge fund manager. Review this screenshot data matrix. 
+Analyze the confluence between the asset's technical structural trend, momentum variables, 
+and underlying balance sheet fundamentals. Detail the structural risks and trade opportunities.
+""", language="text")
+
 else:
-    st.error(f"❌ Core Data Exception: The lookback frame history for symbol '{ticker_symbol}' is insufficient.")
+    st.error(f"❌ Core Data Exception: Market historical parameters for symbol '{ticker_symbol}' are insufficient.")
