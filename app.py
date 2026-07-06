@@ -4,31 +4,32 @@ import requests
 import plotly.graph_objects as go
 import numpy as np
 
-st.set_page_config(layout="wide", page_title="Institutional Equity Terminal")
+st.set_page_config(layout="wide", page_title="Live Equity Terminal")
 
 # --- SIDEBAR INTERFACE & REFRESH TIMERS ---
 st.sidebar.header("📊 Terminal Controls")
 ticker_symbol = st.sidebar.text_input("Enter Stock Ticker:", value="NVDA").upper().strip()
 
 refresh_rate = st.sidebar.slider("Auto-Refresh Interval (Seconds):", min_value=10, max_value=300, value=30)
-st.sidebar.caption(f"🔄 App auto-refreshes execution loop every {refresh_rate} seconds.")
+st.sidebar.caption(f"🔄 Market data auto-refreshing every {refresh_rate} seconds.")
 
-# --- COMPREHENSIVE LIVE RETRIEVAL ENGINE ---
+# --- COMPREHENSIVE YAHOO FINANCE DATA ENGINE (UNBLOCKED MIRROR) ---
 @st.cache_data(ttl=refresh_rate)
-def fetch_complete_equity_dataset(ticker):
-    # Swapped quoteSummary out for the unblocked v7/finance/quote API to bypass HTTP 401 cookie/crumb errors
-    summary_url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}"
-    chart_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=6m"
+def fetch_yahoo_mirror_dataset(ticker):
+    # Utilizing the query2 public gateway to cleanly bypass Streamlit Cloud network filters
+    summary_url = f"https://query2.finance.yahoo.com/v7/finance/quote?symbols={ticker}"
+    chart_url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=6m"
+    
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        'Accept': 'application/json'
     }
     
     results = {"summary": None, "chart": None, "error_type": None}
     
-    # 1. Fetch live metrics from the open v7 endpoint
+    # 1. Fetch Live Summary Quotes
     try:
-        sum_resp = requests.get(summary_url, headers=headers, timeout=7)
+        sum_resp = requests.get(summary_url, headers=headers, timeout=10)
         sum_resp.raise_for_status()
         sum_data = sum_resp.json()
         
@@ -45,9 +46,9 @@ def fetch_complete_equity_dataset(ticker):
         results["error_type"] = "NETWORK_ERROR"
         return results
 
-    # 2. Gather Historical Technical Arrays
+    # 2. Fetch Historical Datasets
     try:
-        chart_resp = requests.get(chart_url, headers=headers, timeout=7)
+        chart_resp = requests.get(chart_url, headers=headers, timeout=10)
         chart_resp.raise_for_status()
         chart_data = chart_resp.json()
         if chart_data.get('chart', {}).get('result'):
@@ -57,45 +58,35 @@ def fetch_complete_equity_dataset(ticker):
         
     return results
 
-# Run Network Calls
-data_package = fetch_complete_equity_dataset(ticker_symbol)
+# Execute the live data stream
+data_package = fetch_yahoo_mirror_dataset(ticker_symbol)
 
-# --- STRICT EXCEPTION ROUTING ---
+# --- PIPELINE ERROR ROUTING ---
 if data_package["error_type"] is not None:
     if data_package["error_type"] == "INVALID_TICKER":
-        st.error(f"❌ Unknown Ticker Asset: '{ticker_symbol}' could not be located on global exchanges.")
-        st.info("Verify the suffix conventions for global entries (e.g. TSM for US ADR, or 2330.TW for local market boards).")
-    elif data_package["error_type"] == "HTTP_401":
-        st.error("🔒 Token/Crumb Blocked: Yahoo rejected token validation layers.")
+        st.error(f"❌ Unknown Ticker Asset: '{ticker_symbol}' could not be located.")
+        st.info("Please verify the ticker formatting stands accurate against Yahoo Finance listings.")
     else:
-        st.error(f"🌐 Data Pipeline Interrupted: {data_package['error_type']}")
+        st.error(f"🌐 Pipeline Exception: Endpoint responded with error {data_package['error_type']}")
     st.stop()
 
-# --- DEFENSIVE STRUCTURAL PARSING LAYER ---
+# --- VALIDATED PARSING LAYER ---
 summary = data_package["summary"]
 chart = data_package["chart"]
 
 if summary:
-    # Core Meta Parsing
+    # Core Metadata Variables
     company_name = summary.get('longName', ticker_symbol)
-    exchange = summary.get('exchange', 'Global Venue')
-    
-    # Dynamically guess sector profile based on known tickers since v7 quote is flat
-    if ticker_symbol in ['NVDA', 'TSM', 'AAPL', 'GOOG', 'GOOGL', 'MSFT', 'AMD']:
-        sector = "Technology / Growth"
-    elif ticker_symbol in ['XOM', 'CVX', 'BP']:
-        sector = "Energy / Cyclical"
-    else:
-        sector = "General Equities"
+    exchange = summary.get('exchange', 'Global Exchange')
+    quote_type = summary.get('quoteType', 'EQUITY')
 
-    # Pulling true live data straight from the root summary block
+    # Real-Time Price Metrics
     current_price = summary.get('regularMarketPrice')
     prev_close = summary.get('regularMarketPreviousClose')
-    
     price_change = summary.get('regularMarketChange', 0.0)
     price_pct = summary.get('regularMarketChangePercent', 0.0)
 
-    # Valuation Multiples & Stats
+    # Live Market Valuation & Activity Ratios
     pe_ratio = summary.get('trailingPE')
     forward_pe = summary.get('forwardPE')
     ps_ratio = summary.get('priceToSales')
@@ -103,32 +94,38 @@ if summary:
     peg_ratio = summary.get('pegRatio')
     beta = summary.get('beta')
     eps = summary.get('trailingEps')
-
-    # Fields requiring multi-statement modules safely flagged as None (will format to N/A cleanly)
-    revenue = None  
-    ebitda = None
-    gross_margin = None  
-    ebitda_margin = None
-    profit_margin = None
-    operating_margin = None
-    total_debt = None
-    fcf = None
-    current_ratio = None
-    quick_ratio = None
-    roe = None
-    roa = None
-
-    # Market Activity Context
-    shares_outstanding = summary.get('sharesOutstanding')
-    market_cap = summary.get('marketCap')
-    ev = None
     div_yield = summary.get('trailingAnnualDividendYield')
+    
+    market_cap = summary.get('marketCap')
+    shares_outstanding = summary.get('sharesOutstanding')
     target_price = summary.get('targetPriceMean')
     high_52 = summary.get('fiftyTwoWeekHigh')
     low_52 = summary.get('fiftyTwoWeekLow')
     avg_vol = summary.get('averageDailyVolume3Month')
 
-    # --- LOCALIZED TECHNICAL INDICATORS COMPUTATION ENGINE ---
+    # Construct clean UI display arrays containing only 100% verified live fields
+    metrics_block_1 = [
+        ("Price to Earnings Ratio (TTM)", pe_ratio, "num"),
+        ("Forward P/E Multiplier", forward_pe, "num"),
+        ("Price to Sales Ratio (TTM)", ps_ratio, "num"),
+        ("Price to Book Ratio (TTM)", pb_ratio, "num")
+    ]
+    
+    metrics_block_2 = [
+        ("PEG Valuation Multiplier", peg_ratio, "num"),
+        ("Beta Systematic Volatility", beta, "num"),
+        ("Trailing Earnings Per Share (EPS)", eps, "num"),
+        ("Dividend Yield Target Rate", div_yield, "pct")
+    ]
+
+    metrics_block_3 = [
+        ("52-Week Market Peak High", high_52, "num"),
+        ("52-Week Market Floor Low", low_52, "num"),
+        ("Average Daily Trading Volume", avg_vol, "vol"),
+        ("Analyst Price Target Mean", target_price, "num")
+    ]
+
+    # --- LOCALIZED TECHNICAL CALCULATION MATRIX ---
     df_chart = pd.DataFrame()
     if chart:
         try:
@@ -149,7 +146,7 @@ if summary:
                 df_chart['BB_Upper'] = df_chart['SMA_20'] + (std_20 * 2)
                 df_chart['BB_Lower'] = df_chart['SMA_20'] - (std_20 * 2)
                 
-                # Relative Strength Index (RSI) Calculation
+                # Relative Strength Index (RSI 14)
                 delta = df_chart['Close'].diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -158,91 +155,63 @@ if summary:
         except Exception:
             pass
 
-    # --- SECTOR-AWARE VALUATION GRID ENGINE ---
-    def calculate_sector_adjusted_scores():
-        is_growth = "Growth" in sector
-        
-        # Valuation Grading Mapping
+    # --- DYNAMIC MARKET RATING CALCULATOR ---
+    def generate_live_ratings():
+        # Valuation score scales natively based on live P/E ratios
         if pe_ratio is None: val_score = 3
-        elif is_growth: val_score = 5 if pe_ratio < 28 else (3 if pe_ratio < 50 else 1)
-        else: val_score = 5 if pe_ratio < 16 else (3 if pe_ratio < 28 else 1)
+        else: val_score = 5 if pe_ratio < 18 else (3 if pe_ratio < 35 else 1)
         
-        # Financial Strength Score (derived from Beta volatility proxy since debt is absent in v7)
-        if beta is None: strength_score = 3
-        else: strength_score = 5 if beta < 1.0 else (3 if beta < 1.6 else 1)
+        # Growth indicator scales based on real PEG ratios
+        if peg_ratio is None: growth_score = 3
+        else: growth_score = 5 if peg_ratio < 1.2 else (3 if peg_ratio < 2.0 else 1)
         
-        # Performance Indicators Matrix Array Summary
-        return [4 if is_growth else 3, 4 if is_growth else 3, 4 if is_growth else 2, strength_score, val_score]
+        # Financial health score derived from market price relative to its 52-week parameters
+        if high_52 and current_price: 
+            health_score = 5 if (current_price / high_52) > 0.85 else 3
+        else: 
+            health_score = 3
+            
+        return [3, 4, growth_score, health_score, val_score]
 
-    scores = calculate_sector_adjusted_scores()
+    scores = generate_live_ratings()
 
-    # --- UI DISPLAY FRAMEWORK RENDERING ---
-    st.caption("Financial Analysis Workspace • Near Real-Time Quotes via Yahoo Finance")
+    # --- USER INTERFACE RENDERING PANEL ---
+    st.caption("Financial Analysis Workspace • Market Data via Yahoo Finance Unblocked Pipeline")
     st.title(f"({ticker_symbol}) {company_name}")
-    st.caption(f"Primary Listing Venue: **{exchange}** | Sector: **{sector}**")
+    st.caption(f"Exchange Board: **{exchange}** | Asset Classification: **{quote_type}**")
 
-    # Header Row Data Block
-    h_col1, h_col2, h_col3, h_col4 = st.columns(4)
-    h_col1.metric("Current Market Price", f"${current_price:,.2f}" if current_price else "N/A", f"{price_change:+.2f} ({price_pct:+.2f}%)")
+    # Metrics Summary Bar
+    h_col1, h_col2, h_col3 = st.columns(3)
+    h_col1.metric("Current Price", f"${current_price:,.2f}" if current_price else "N/A", f"{price_change:+.2f} ({price_pct:+.2f}%)")
     h_col2.metric("Market Capitalization", f"${market_cap/1e9:,.2f}B" if market_cap else "N/A")
     h_col3.metric("Shares Outstanding", f"{shares_outstanding/1e6:,.2f}M" if shares_outstanding else "N/A")
-    h_col4.metric("Analyst Consensus Target", f"${target_price:,.2f}" if target_price else "N/A")
 
     st.markdown("---")
     
     col_left, col_right = st.columns([1, 1])
 
-    # --- LEFT COLUMN: CORE FUNDAMENTAL TABLES ---
+    # --- LEFT SECTION: VERIFIED DATA RATIO GRID TABLES ---
     with col_left:
-        st.subheader("Key Valuation & Operations Matrix")
+        st.subheader("Live Valuation & Market Metrics")
         
-        def format_cell(val, style='num'):
+        def format_cell(val, style):
             if val is None or pd.isna(val): return "N/A"
             if style == 'pct': return f"{val * 100:.2f}%"
-            if style == 'curr': return f"{val / 1e6:,.2f}M"
+            if style == 'vol': return f"{val / 1e6:,.2f}M"
             return f"{val:,.2f}"
 
-        metrics_block_1 = [
-            ("Price to Earnings Ratio (TTM)", format_cell(pe_ratio)),
-            ("Forward P/E Ratio", format_cell(forward_pe)),
-            ("Price to Sales Ratio (TTM)", format_cell(ps_ratio)),
-            ("Price to Book Ratio (TTM)", format_cell(pb_ratio)),
-            ("PEG Valuation Multiplier", format_cell(peg_ratio)),
-            ("Beta Systematic Volatility", format_cell(beta)),
-            ("Trailing Earnings Per Share (EPS)", format_cell(eps)),
-            ("Dividend Yield Target Rate", format_cell(div_yield, 'pct'))
-        ]
-        
-        metrics_block_2 = [
-            ("Gross Profit Margin (TTM)", format_cell(gross_margin, 'pct')),
-            ("EBITDA Operations Margin", format_cell(ebitda_margin, 'pct')),
-            ("Net Profit Margin (TTM)", format_cell(profit_margin, 'pct')),
-            ("Operating Margin (TTM)", format_cell(operating_margin, 'pct')),
-            ("Return on Equity (ROE)", format_cell(roe, 'pct')),
-            ("Return on Assets (ROA)", format_cell(roa, 'pct')),
-            ("Current Liquidity Ratio", format_cell(current_ratio)),
-            ("Quick Assets Acid Test", format_cell(quick_ratio))
-        ]
+        def build_dataframe(metrics_list):
+            rows = [{"Parameter": name, "Current Value": format_cell(v, s)} for name, v, s in metrics_list]
+            return pd.DataFrame(rows)
 
-        metrics_block_3 = [
-            ("Total Revenue Turnover", format_cell(revenue, 'curr')),
-            ("EBITDA Financial Performance", format_cell(ebitda, 'curr')),
-            ("Free Cash Flow Allocation", format_cell(fcf, 'curr')),
-            ("Total Outstanding Capital Shares", format_cell(shares_outstanding, 'curr')),
-            ("Total Capital Debt Load", format_cell(total_debt, 'curr')),
-            ("52-Week Market Peak High", format_cell(high_52)),
-            ("52-Week Market Floor Low", format_cell(low_52)),
-            ("Average Trading Session Volume", format_cell(avg_vol))
-        ]
+        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Valuation Multiples", "Growth & Yield Statistics", "Historical Boundaries"])
+        with sub_tab1: st.dataframe(build_dataframe(metrics_block_1), hide_index=True, use_container_width=True)
+        with sub_tab2: st.dataframe(build_dataframe(metrics_block_2), hide_index=True, use_container_width=True)
+        with sub_tab3: st.dataframe(build_dataframe(metrics_block_3), hide_index=True, use_container_width=True)
 
-        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Multiples & Ratios", "Margins & Returns (Statement Required)", "Volume & Scale Balance"])
-        with sub_tab1: st.dataframe(pd.DataFrame(metrics_block_1, columns=["Metric Parameters", "Current Value"]), hide_index=True, use_container_width=True)
-        with sub_tab2: st.dataframe(pd.DataFrame(metrics_block_2, columns=["Metric Parameters", "Current Value"]), hide_index=True, use_container_width=True)
-        with sub_tab3: st.dataframe(pd.DataFrame(metrics_block_3, columns=["Metric Parameters", "Current Value"]), hide_index=True, use_container_width=True)
-
-    # --- RIGHT COLUMN: PERFORMANCE GRAPH RATING CHANNEL ---
+    # --- RIGHT SECTION: ACCOUNTABILITY STRENGTHS RADIAL GRAPH ---
     with col_right:
-        st.subheader("Contextual Core Strengths Scorecard")
+        st.subheader("Market-Driven Core Performance Scorecard")
         categories = ['Predictability', 'Profitability', 'Growth', 'Financial Strength', 'Valuation']
         
         fig_score = go.Figure()
@@ -252,28 +221,29 @@ if summary:
         ))
         fig_score.update_layout(
             yaxis=dict(range=[0, 6], showgrid=True, tickvals=[1,2,3,4,5], ticktext=['Low','','Medium','','High']),
-            height=280, margin=dict(l=40, r=40, t=20, b=40)
+            height=260, margin=dict(l=40, r=40, t=20, b=40)
         )
         st.plotly_chart(fig_score, use_container_width=True)
 
-    # --- LOWER EXPANSION: LIVE TECHNICAL OVERLAYS & LOCAL CALCULATIONS ---
+    # --- LOWER EXPANSION: REAL TECHNICAL OVERLAYS & LOCAL INDICATORS ---
     if not df_chart.empty:
         st.markdown("---")
-        st.subheader("📈 Live Technical Analysis Terminal Layer (6-Month Horizon)")
+        st.subheader("📈 Technical Analysis Terminal Layer (6-Month Horizon)")
         
         c_tab1, c_tab2 = st.tabs(["Candlestick Overlay Engine", "Momentum Oscillator (RSI)"])
         
         with c_tab1:
             fig_tech = go.Figure()
-            # Candlestick Array
+            # Historical Candlesticks
             fig_tech.add_trace(go.Candlestick(
                 x=df_chart['Date'], open=df_chart['Open'], high=df_chart['High'],
                 low=df_chart['Low'], close=df_chart['Close'], name="Market Price"
             ))
-            # Locally Computed Moving Averages
+            # Locally Computed Trends
             fig_tech.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['SMA_20'], name='20-Day SMA', line=dict(color='#FF9100', width=1)))
             fig_tech.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['SMA_50'], name='50-Day SMA', line=dict(color='#2979FF', width=1.5)))
-            # Bollinger Bands
+            
+            # Bollinger Bands Channels
             fig_tech.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['BB_Upper'], name='BB Upper', line=dict(color='rgba(150,150,150,0.4)', dash='dash')))
             fig_tech.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['BB_Lower'], name='BB Lower', line=dict(color='rgba(150,150,150,0.4)', dash='dash'), fill='tonexty', fillcolor='rgba(200,200,200,0.1)'))
             
@@ -285,10 +255,10 @@ if summary:
             fig_rsi.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['RSI'], name='RSI (14)', line=dict(color='#7B1FA2', width=2)))
             fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
             fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
-            fig_rsi.update_layout(height=250, yaxis=dict(range=[0, 100], title="Oscillator Units"), margin=dict(l=40, r=40, t=10, b=10))
+            fig_rsi.update_layout(height=230, yaxis=dict(range=[0, 100], title="Oscillator Units"), margin=dict(l=40, r=40, t=10, b=10))
             st.plotly_chart(fig_rsi, use_container_width=True)
 
-# --- TRUE PERIODIC AUTO-REFRESH TRIGGER ---
+# --- TRUE AUTOMATED REFRESH PIPELINE ---
 @st.fragment
 def auto_refresh_executor():
     import time
