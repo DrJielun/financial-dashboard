@@ -285,7 +285,7 @@ if raw_history is not None and info_payload is not None:
                 f"* **Risk Vector Guard:** {risk_clause}")
 
         st.markdown("---")
-        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.04, row_heights=[0.50, 0.25, 0.25])
+        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.08, row_heights=[0.62, 0.18, 0.20])
         
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['BB_Upper'], mode='lines', line=dict(color='rgba(0, 230, 118, 0.25)', width=1), showlegend=False), row=1, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['BB_Lower'], mode='lines', line=dict(color='rgba(0, 230, 118, 0.25)', width=1), fill='tonexty', fillcolor='rgba(0, 230, 118, 0.02)', name='Bollinger Bands (20,2)'), row=1, col=1)
@@ -309,7 +309,7 @@ if raw_history is not None and info_payload is not None:
         for lvl in resistance_levels:
             fig.add_hline(y=lvl,line_dash="dot",line_color="red",annotation_text=f"R {lvl:.2f}")
         fig.update_layout(
-            height=650, margin=dict(l=20, r=20, t=10, b=10), template="plotly_dark",
+            height=950, margin=dict(l=60, r=40, t=90, b=50), template="plotly_dark",
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
             xaxis=dict(rangeslider=dict(visible=False)),
