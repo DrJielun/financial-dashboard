@@ -56,48 +56,35 @@ def fetch_ticker_info_blob(ticker_str):
     except Exception:
         return {}
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def fetch_longlived_metadata(ticker_str):
-    payload = {
-        "longName": ticker_str, "targetPrice": None, "pe_trailing": None, "pe_forward": None, 
-        "peg": None, "pb": None, "roe": None, "net_margin": None, "op_margin": None,
-        "eps_growth": None, "rev_growth": None, "debt_equity": None, "current_ratio": None,
-        "marketCap": None, "beta": None, "avg_volume": None, "fiftyTwoWeekHigh": None,
-        "fiftyTwoWeekLow": None, "dividendYield": None, "sharesOutstanding": None,
-        "floatShares": None, "shortInterest": None
-    }
+    t=yf.Ticker(ticker_str)
+    fast=getattr(t,"fast_info",{}) or {}
     try:
-        t = yf.Ticker(ticker_str)
-        name = t.fast_info.get("shortName")
-        if not name:
-            info = fetch_ticker_info_blob(ticker_str)
-            name = info.get("longName") or info.get("shortName") or ticker_str
-        payload["longName"] = name
-        info = fetch_ticker_info_blob(ticker_str)
-        if info:
-            payload["targetPrice"] = info.get("targetMeanPrice")
-            payload["pe_trailing"] = info.get("trailingPE")
-            payload["pe_forward"] = info.get("forwardPE")
-            payload["peg"] = info.get("pegRatio")
-            payload["pb"] = info.get("priceToBook")
-            payload["roe"] = info.get("returnOnEquity")
-            payload["net_margin"] = info.get("profitMargins")
-            payload["op_margin"] = info.get("operatingMargins")
-            payload["eps_growth"] = info.get("earningsGrowth")
-            payload["rev_growth"] = info.get("revenueGrowth")
-            payload["debt_equity"] = info.get("debtToEquity")
-            payload["current_ratio"] = info.get("currentRatio")
-            payload["marketCap"] = info.get("marketCap")
-            payload["beta"] = info.get("beta")
-            payload["avg_volume"] = info.get("averageVolume")
-            payload["fiftyTwoWeekHigh"] = info.get("fiftyTwoWeekHigh")
-            payload["fiftyTwoWeekLow"] = info.get("fiftyTwoWeekLow")
-            payload["dividendYield"] = info.get("dividendYield")
-            payload["sharesOutstanding"] = info.get("sharesOutstanding")
-            payload["floatShares"] = info.get("floatShares")
-            payload["shortInterest"] = info.get("shortPercentOfFloat")
+        info=t.info or {}
     except Exception:
-        pass
+        info={}
+    payload={}
+    payload["longName"]=info.get("longName") or info.get("shortName") or fast.get("shortName") or ticker_str
+    price=fast.get("lastPrice") or info.get("currentPrice") or info.get("regularMarketPrice")
+    shares=info.get("sharesOutstanding") or fast.get("shares")
+    payload["marketCap"]=info.get("marketCap") or (price*shares if price and shares else None)
+    for k in ["beta","averageVolume","trailingPE","forwardPE","pegRatio","priceToBook","dividendYield","returnOnEquity","profitMargins","operatingMargins","earningsGrowth","revenueGrowth","debtToEquity","currentRatio","fiftyTwoWeekHigh","fiftyTwoWeekLow","sharesOutstanding","floatShares","shortPercentOfFloat","targetMeanPrice"]:
+        payload[k]=info.get(k)
+    payload["avg_volume"]=payload.pop("averageVolume")
+    payload["pe_trailing"]=payload.pop("trailingPE")
+    payload["pe_forward"]=payload.pop("forwardPE")
+    payload["peg"]=payload.pop("pegRatio")
+    payload["pb"]=payload.pop("priceToBook")
+    payload["roe"]=payload.pop("returnOnEquity")
+    payload["net_margin"]=payload.pop("profitMargins")
+    payload["op_margin"]=payload.pop("operatingMargins")
+    payload["eps_growth"]=payload.pop("earningsGrowth")
+    payload["rev_growth"]=payload.pop("revenueGrowth")
+    payload["debt_equity"]=payload.pop("debtToEquity")
+    payload["current_ratio"]=payload.pop("currentRatio")
+    payload["shortInterest"]=payload.pop("shortPercentOfFloat")
+    payload["targetPrice"]=payload.pop("targetMeanPrice")
     return payload
 
 # --- LAYER 1: DATA INGESTION ---
