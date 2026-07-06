@@ -17,7 +17,7 @@ selected_watch = st.sidebar.selectbox("Quick Select Watchlist:", [""] + watchlis
 default_ticker = selected_watch if selected_watch else "AAPL"
 ticker_symbol = st.sidebar.text_input("Manual Ticker Input:", value=default_ticker).upper().strip()
 
-# --- TIMEFRAME SUPPORT CONTROLS (FIXED PERFORMANCES - NO DATA EXTRACTION OVERHEAD) ---
+# --- TIMEFRAME SUPPORT CONTROLS ---
 timeframe_opts = {
     "1 Month": {"period": "1mo"},
     "3 Months": {"period": "3mo"},
@@ -105,7 +105,6 @@ def fetch_longlived_metadata(ticker_str):
 def get_raw_market_data(ticker_str, benchmark_str, period_str):
     try:
         stock = yf.Ticker(ticker_str)
-        # Dynamic download period ensures fast performance without scraping dead history blocks (FIXED)
         history = stock.history(period=period_str, interval="1d")
         if history.empty:
             return None, None, None
@@ -125,7 +124,6 @@ def get_raw_market_data(ticker_str, benchmark_str, period_str):
 def compute_technical_indicators(df_history, df_bench):
     df = df_history.copy()
     
-    # 1. Moving Averages & Bands
     df['SMA50'] = df['Close'].rolling(window=min(50, len(df))).mean()
     df['SMA200'] = df['Close'].rolling(window=min(200, len(df))).mean()
     df['MA20'] = df['Close'].rolling(window=min(20, len(df))).mean()
@@ -134,24 +132,20 @@ def compute_technical_indicators(df_history, df_bench):
     df['BB_Lower'] = df['MA20'] - (2 * df['Std20'])
     df['Vol_Bandwidth'] = np.where(df['MA20'] > 0, (df['BB_Upper'] - df['BB_Lower']) / df['MA20'], np.nan)
     
-    # Rolling window tracking prevents lookahead/recalibration distortion artifacts (FIXED)
     df['BB_Squeeze'] = df['Vol_Bandwidth'] < df['Vol_Bandwidth'].rolling(window=min(126, len(df)), min_periods=1).quantile(0.20)
     
-    # 2. Vectorized Wilder RMA RSI (FIXED)
     delta = df['Close'].diff()
     gain, loss = delta.clip(lower=0), -delta.clip(upper=0)
     avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/14, adjust=False).mean()
     df['RSI'] = 100 - (100 / (1 + (avg_gain / avg_loss.replace(0, np.nan))))
     
-    # 3. MACD
     df['EMA12'] = df['Close'].ewm(span=12, adjust=False).mean()
     df['EMA26'] = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = df['EMA12'] - df['EMA26']
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
     
-    # 4. True Wilder DMI & ADX Matrix Channels
     high, low, close = df['High'], df['Low'], df['Close']
     up_move = high - high.shift(1)
     down_move = low.shift(1) - low
@@ -164,10 +158,8 @@ def compute_technical_indicators(df_history, df_bench):
     df['MinusDI'] = 100 * (pd.Series(minus_dm, index=df.index).ewm(alpha=1/14, adjust=False).mean() / df['ATR'].replace(0, np.nan))
     df['ADX'] = ((abs(df['PlusDI'] - df['MinusDI']) / (df['PlusDI'] + df['MinusDI']).replace(0, np.nan)) * 100).ewm(alpha=1/14, adjust=False).mean()
     
-    # 5. RVOL Calculation (FIXED)
     df['RVOL'] = df['Volume'] / df['Volume'].rolling(window=min(20, len(df))).mean().replace(0, np.nan)
     
-    # 6. Geometric Cumprod Alpha Relative Strength Matrix (FIXED)
     stock_ret = (1 + df['Close'].pct_change()).cumprod()
     bench_ret = (1 + df_bench['Close'].pct_change().reindex(df.index, method='ffill')).cumprod()
     df['Alpha_Strength'] = stock_ret - bench_ret
@@ -184,7 +176,7 @@ if raw_history is not None and info_payload is not None:
     
     latest = df_view.iloc[-1]
     sma_available = pd.notna(latest["SMA50"]) and pd.notna(latest["SMA200"])
-    latest_squeeze = latest['BB_Squeeze']  # Fixed Definition (FIXED)
+    latest_squeeze = latest['BB_Squeeze']
     
     latest_close = latest['Close']
     prev_close = info_payload['prev_close']
@@ -205,36 +197,30 @@ if raw_history is not None and info_payload is not None:
         col_h3.metric("52-Week Range Position", f"{price_position_pct:.1f}%", f"Floor: ${low_52w:.1f}")
         col_h4.metric(f"Benchmark Alpha ({benchmark_sym})", f"{latest['Alpha_Strength']*100:+.2f}%", "Geometric Delta")
 
-        # --- UNBIASED SYSTEM FACTOR NORMALIZATION ENGINE ---
         st.markdown("---")
         latest_rsi = latest['RSI']
         latest_upper_bb = latest['BB_Upper']
         latest_lower_bb = latest['BB_Lower']
         latest_adx = latest['ADX']
         
-        # Factor 1: Normalized Trend Factor [-1, 1]
         if sma_available:
             trend_factor = np.clip(((latest['SMA50'] - latest['SMA200']) / latest['SMA200']) * 10, -1.0, 1.0)
         else:
             trend_factor = 0.0
 
-        # Factor 2: Normalized Momentum Factor [-1, 1]
         norm_rsi = ((latest_rsi - 50) / 20) if pd.notna(latest_rsi) else 0.0
         norm_macd = 1.0 if latest['MACD'] > latest['MACD_Signal'] else -1.0
         momentum_factor = np.clip((0.6 * norm_rsi) + (0.4 * norm_macd), -1.0, 1.0)
 
-        # Factor 3: Normalized Volatility Factor [-1, 1]
         pct_b = (latest_close - latest_lower_bb) / (latest_upper_bb - latest_lower_bb) if latest_upper_bb != latest_lower_bb else 0.5
         volatility_factor = np.clip((pct_b - 0.5) * 2, -1.0, 1.0)
         if pd.notna(latest['Vol_Bandwidth']):
             volatility_factor *= (latest['Vol_Bandwidth'] * 5)
         volatility_factor = np.clip(volatility_factor, -1.0, 1.0)
 
-        # Orthogonal Direct Unweighted Factor Addition (FIXED)
         composite_score = trend_factor + momentum_factor + volatility_factor
         composite_score *= (1.10 if (pd.notna(latest_adx) and latest_adx > 25.0) else 0.70)
         
-        # Advanced Structural Regime Mapping Labels (FIXED)
         if latest_squeeze: regime_label = "Compression / Volatility Squeeze"
         elif latest_adx >= 25.0 and trend_factor > 0.3: regime_label = "Strong Bullish Breakout Trend"
         elif latest_adx >= 25.0 and trend_factor < -0.3: regime_label = "Strong Bearish Distribution Trend"
@@ -247,7 +233,6 @@ if raw_history is not None and info_payload is not None:
         else: render_box = st.info
         render_box(f"#### **Market Regime Classification: {regime_label}** (Composite Signal Score: {composite_score:+.2f})")
 
-        # --- ADAPTIVE TEXT MATRIX OUTLINE SUMMARY BLOCK (FIXED) ---
         trend_state = "Strong Bullish" if trend_factor > 0.4 else ("Moderate Bullish" if trend_factor > 0 else "Bearish Structure")
         mom_state = "Expanding Upside" if momentum_factor > 0.3 else ("Weakening / Cool Down" if momentum_factor < -0.3 else "Neutral Inactive")
         vol_state = "Expanding Bandwidth" if latest['Vol_Bandwidth'] > 0.15 else "Contracting Squeeze"
@@ -259,31 +244,26 @@ if raw_history is not None and info_payload is not None:
                 f"* **Volatility Context:** `{vol_state}` | **Alpha Return profile:** `{alpha_state}`\n"
                 f"* **Risk Vector Guard:** {risk_clause}")
 
-        # --- INTERACTIVE MULTI-PANEL CHART TERMINAL PANEL ---
         st.markdown("---")
         fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.04, row_heights=[0.50, 0.25, 0.25])
         
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['BB_Upper'], mode='lines', line=dict(color='rgba(0, 230, 118, 0.25)', width=1), showlegend=False), row=1, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['BB_Lower'], mode='lines', line=dict(color='rgba(0, 230, 118, 0.25)', width=1), fill='tonexty', fillcolor='rgba(0, 230, 118, 0.02)', name='Bollinger Bands (20,2)'), row=1, col=1)
         
-        # Candlestick Implementation Integration (FIXED)
         fig.add_trace(go.Candlestick(x=df_view.index, open=df_view['Open'], high=df_view['High'], low=df_view['Low'], close=df_view['Close'], name='Price Bars'), row=1, col=1)
         
         if sma_available:
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA50'], mode='lines', name='50-Day SMA', line=dict(color='#FBC02D', width=1.5, dash='dash')), row=1, col=1)
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA200'], mode='lines', name='200-Day SMA', line=dict(color='#D32F2F', width=1.5, dash='dot')), row=1, col=1)
             
-        # Plot 2: Volatility Output & MACD Histograms
         fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume Traded', marker_color='rgba(33, 150, 243, 0.30)'), row=2, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD Line', line=dict(color='#29B6F6', width=1.5)), row=2, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD_Signal'], mode='lines', name='MACD Signal', line=dict(color='#AB47BC', width=1.2, dash='dot')), row=2, col=1)
         
-        # Plot 3: Complete DMI Trend Strength Vector Space Matrix
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['ADX'], mode='lines', name='ADX Strength Line', line=dict(color='#FF9100', width=2.5)), row=3, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['PlusDI'], mode='lines', name='+DI Channel', line=dict(color='#00E676', width=1.2, dash='dash')), row=3, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MinusDI'], mode='lines', name='-DI Channel', line=dict(color='#FF5252', width=1.2, dash='dot')), row=3, col=1)
 
-        # Style layout environments - Disabling the Range Slider + Enabling Unified Hover (FIXED)
         fig.update_layout(
             height=650, margin=dict(l=20, r=20, t=10, b=10), template="plotly_dark",
             hovermode="x unified",
@@ -293,7 +273,6 @@ if raw_history is not None and info_payload is not None:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- MACRO BLOCK GEOPOLITICAL CALENDAR (FIXED) ---
         st.markdown("### 🗓️ Institutional Macro Calendar (July 2026)")
         cal_data = [
             {"Date": "2026-07-02", "Indicator / Event": "US Non-Farm Payrolls (NFP)", "Impact": "🔥 Critical (Actual: 57K vs 115K Exp)"},
@@ -305,7 +284,6 @@ if raw_history is not None and info_payload is not None:
         ]
         st.table(pd.DataFrame(cal_data))
 
-    # --- FUNDAMENTAL SIDEBAR MATRIX ---
     with fundamental_sidebar:
         st.markdown("### 📋 Quant Fundamentals")
         def fmt_v(v, f="num"):
@@ -350,33 +328,8 @@ if raw_history is not None and info_payload is not None:
         st.markdown("#### **Macro Calendar Forecasts**")
         st.markdown(f"**Next Expected Earnings:** `{fnd['next_earnings']}`")
 
-    # --- SCREENSHOT-READY LOGIC: MINIMAL EXPORT FORMAT JSON LOG BLOCKS (FIXED) ---
     st.markdown("---")
-    st.subheader("📸 Structured Screenshot Export Node (Clean JSON Payload)")
-    st.caption("Take a screenshot of this optimized JSON block to feed directly into any advanced multi-modal LLM for instant strategy ingestion.")
-    
-    # Render variables dynamically inside native structured string templates
-    json_prompt_template = f"""{{
-  "ticker": "{ticker_symbol}",
-  "name": "{fnd['longName']}",
-  "close_price": {latest_close:.2f},
-  "price_change_pct": {pct_change:+.2f},
-  "rvol_20d": {latest['RVOL']:.2f},
-  "pos_52w_pct": {price_position_pct:.1f},
-  "alpha_vs_{benchmark_sym}_pct": {latest['Alpha_Strength']*100:+.2f},
-  "rsi_14": {latest_rsi:.1f if pd.notna(latest_rsi) else "null"},
-  "adx_14": {latest_adx:.1f if pd.notna(latest_adx) else "null"},
-  "macd_line": {latest['MACD']:.2f if pd.notna(latest['MACD']) else "null"},
-  "macd_hist": {latest['MACD_Hist']:.2f if pd.notna(latest['MACD_Hist']) else "null"},
-  "bb_bandwidth_pct": {latest['Vol_Bandwidth']*100:.2f if pd.notna(latest['Vol_Bandwidth']) else "null"},
-  "bb_squeeze_active": {str(latest_squeeze).lower()},
-  "pe_trailing": {latest['Close']/fnd['pe_trailing'] if (fnd['pe_trailing'] and fnd['pe_trailing']>0) else "null"},
-  "roe_pct": {fnd['roe']*100 if fnd['roe'] else "null"},
-  "debt_to_equity_pct": {fnd['debt_equity'] if fnd['debt_equity'] else "null"},
-  "composite_factor_score": {composite_score:.3f},
-  "regime_classification": "{regime_label}",
-  "system_prompt": "Review this asset data block. Evaluate technical trend confluence, momentum speeds, volatility adjustments, and underlying capital structures. Outline trade triggers and risk horizons."
-}}"""
-    st.code(json_prompt_template, language="json")
+    st.caption("Terminal analysis complete. Data refreshed and cached locally.")
+
 else:
     st.error(f"❌ Core Data Exception: Historical records for symbol '{ticker_symbol}' could not be safely parsed.")
