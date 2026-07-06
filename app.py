@@ -162,6 +162,41 @@ def compute_technical_indicators(df_history, df_bench):
     
     return df
 
+
+
+# ===== Added: Trading Signals & Support/Resistance =====
+def generate_trading_signals(df):
+    latest=df.iloc[-1]
+    signals={}
+    if pd.notna(latest["SMA50"]) and pd.notna(latest["SMA200"]):
+        if latest["Close"]>latest["SMA50"]>latest["SMA200"]:
+            signals["Trend"]=("Bullish",1)
+        elif latest["Close"]<latest["SMA50"]<latest["SMA200"]:
+            signals["Trend"]=("Bearish",-1)
+        else:
+            signals["Trend"]=("Neutral",0)
+    signals["RSI"]=("Oversold",1) if latest["RSI"]<30 else ("Overbought",-1) if latest["RSI"]>70 else ("Neutral",0)
+    signals["MACD"]=("Bullish",1) if latest["MACD"]>latest["MACD_Signal"] else ("Bearish",-1)
+    signals["ADX"]=("Strong Trend",1) if latest["ADX"]>25 else ("Weak Trend",0)
+    if latest["Close"]>latest["BB_Upper"]:
+        signals["Bollinger"]=("Above Upper",-1)
+    elif latest["Close"]<latest["BB_Lower"]:
+        signals["Bollinger"]=("Below Lower",1)
+    else:
+        signals["Bollinger"]=("Inside Bands",0)
+    signals["Volume"]=("High",1) if latest["RVOL"]>1.5 else ("Normal",0)
+    score=sum(v[1] for v in signals.values())
+    rating="🟢 Strong Buy" if score>=4 else "🟢 Buy" if score>=2 else "🟡 Hold" if score>=0 else "🟠 Weak Sell" if score>=-2 else "🔴 Strong Sell"
+    confidence=round((score+6)/12*100)
+    return signals,rating,confidence
+
+def detect_support_resistance(df,window=10):
+    highs=[];lows=[]
+    for i in range(window,len(df)-window):
+        if df["High"].iloc[i]==df["High"].iloc[i-window:i+window+1].max(): highs.append(df["High"].iloc[i])
+        if df["Low"].iloc[i]==df["Low"].iloc[i-window:i+window+1].min(): lows.append(df["Low"].iloc[i])
+    return sorted(set(lows))[:5],sorted(set(highs),reverse=True)[:5]
+
 # --- LAYER 3: LAYOUT MATRIX RENDERING ENGINE ---
 with st.spinner("Executing real-time pipeline algorithms..."):
     raw_history, bench_history, info_payload = get_raw_market_data(ticker_symbol, benchmark_sym, period_val)
@@ -169,6 +204,8 @@ with st.spinner("Executing real-time pipeline algorithms..."):
 if raw_history is not None and info_payload is not None:
     fnd = fetch_longlived_metadata(ticker_symbol)
     df_view = compute_technical_indicators(raw_history, bench_history)
+    support_levels,resistance_levels=detect_support_resistance(df_view)
+    signals,rating,confidence=generate_trading_signals(df_view)
     
     latest = df_view.iloc[-1]
     sma_available = pd.notna(latest["SMA50"]) and pd.notna(latest["SMA200"])
@@ -194,6 +231,13 @@ if raw_history is not None and info_payload is not None:
         col_h4.metric(f"Benchmark Alpha ({benchmark_sym})", f"{latest['Alpha_Strength']*100:+.2f}%", "Geometric Delta")
 
         st.markdown("---")
+        st.subheader("📊 Trading Signals")
+        c1,c2=st.columns([1,2])
+        with c1:
+            st.metric("Overall Rating",rating)
+            st.metric("Confidence",f"{confidence}%")
+        with c2:
+            st.dataframe(pd.DataFrame({"Indicator":list(signals.keys()),"Status":[v[0] for v in signals.values()]}),hide_index=True,use_container_width=True)
         latest_rsi = latest['RSI']
         latest_upper_bb = latest['BB_Upper']
         latest_lower_bb = latest['BB_Lower']
@@ -260,6 +304,10 @@ if raw_history is not None and info_payload is not None:
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['PlusDI'], mode='lines', name='+DI Channel', line=dict(color='#00E676', width=1.2, dash='dash')), row=3, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MinusDI'], mode='lines', name='-DI Channel', line=dict(color='#FF5252', width=1.2, dash='dot')), row=3, col=1)
 
+        for lvl in support_levels:
+            fig.add_hline(y=lvl,line_dash="dot",line_color="green",annotation_text=f"S {lvl:.2f}")
+        for lvl in resistance_levels:
+            fig.add_hline(y=lvl,line_dash="dot",line_color="red",annotation_text=f"R {lvl:.2f}")
         fig.update_layout(
             height=650, margin=dict(l=20, r=20, t=10, b=10), template="plotly_dark",
             hovermode="x unified",
