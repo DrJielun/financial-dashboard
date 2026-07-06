@@ -113,10 +113,11 @@ if ticker_symbol:
         fig.add_trace(go.Scatter(x=df_history.index, y=df_history['SMA50'], mode='lines', name='50-Day SMA', line=dict(color='#FBC02D', width=1.5, dash='dash')), row=1, col=1)
         # SMA 200
         fig.add_trace(go.Scatter(x=df_history.index, y=df_history['SMA200'], mode='lines', name='200-Day SMA', line=dict(color='#D32F2F', width=1.5, dash='dot')), row=1, col=1)
-        # Bollinger Upper Band
-        fig.add_trace(go.Scatter(x=df_history.index, y=df_history['BB_Upper'], mode='lines', name='BB Upper (20,2)', line=dict(color='rgba(255, 255, 255, 0.3)', width=1)), row=1, col=1)
-        # Bollinger Lower Band
-        fig.add_trace(go.Scatter(x=df_history.index, y=df_history['BB_Lower'], mode='lines', name='BB Lower (20,2)', line=dict(color='rgba(255, 255, 255, 0.3)', width=1), fill='tonexty', fillcolor='rgba(255, 255, 255, 0.02)'), row=1, col=1)
+        
+        # Bollinger Upper Band (Updated color parameters to Vibrant Financial Green)
+        fig.add_trace(go.Scatter(x=df_history.index, y=df_history['BB_Upper'], mode='lines', name='BB Upper (20,2)', line=dict(color='#00E676', width=1.2)), row=1, col=1)
+        # Bollinger Lower Band (Updated color parameters to Vibrant Financial Green + Subtle Transparent Fill)
+        fig.add_trace(go.Scatter(x=df_history.index, y=df_history['BB_Lower'], mode='lines', name='BB Lower (20,2)', line=dict(color='#00E676', width=1.2), fill='tonexty', fillcolor='rgba(0, 230, 118, 0.03)'), row=1, col=1)
         
         # --- ROW 2: RSI 14 OSCILLATOR ---
         # RSI Trace
