@@ -7,12 +7,9 @@ from datetime import datetime
 # Set page to wide mode to match the original dashboard image layout
 st.set_page_config(layout="wide", page_title="Stock Analysis Dashboard")
 
-# --- SECURE API KEY HANDLING ---
-if "FMP_API_KEY" in st.secrets:
-    API_KEY = st.secrets["FMP_API_KEY"]
-else:
-    # Hardcode test fallback if you aren't using Streamlit Secrets yet
-    API_KEY = "RnSDMMwDXfmZfoSP7uzcN4Ok5dZYVHSz" 
+# --- PASTE YOUR API KEY HERE ---
+# Replace the text inside the quotes with your actual 32-character FMP API key
+API_KEY = "RnSDMMwDXfmZfoSP7uzcN4Ok5dZYVHSz" 
 
 # --- SAFE DATA FETCHING ENGINE (CACHED) ---
 @st.cache_data(ttl=600)  
@@ -58,7 +55,7 @@ if profile is None or quote is None or metrics is None:
 
 # Warning banner if the app is in demo mode
 if is_mock_data:
-    st.warning("⚠️ Running in Demo Mode. The API rejected the key or ticker. Try entering 'AAPL' or check your Streamlit Secrets setup.")
+    st.warning("⚠️ Running in Demo Mode. The API rejected the key or ticker. Make sure you replaced 'YOUR_ACTUAL_FMP_API_KEY_HERE' in the code, or try entering 'AAPL'.")
 
 # 1. HEADER BLOCK
 st.caption(f"{profile.get('sector', 'N/A')}  •  {profile.get('industry', 'N/A')}")
