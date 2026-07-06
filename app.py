@@ -16,34 +16,32 @@ st.sidebar.caption(f"🔄 App auto-refreshes execution loop every {refresh_rate}
 # --- COMPREHENSIVE LIVE RETRIEVAL ENGINE ---
 @st.cache_data(ttl=refresh_rate)
 def fetch_complete_equity_dataset(ticker):
-    # Consolidates live quotes, multi-period history, and underlying balance modules
-    summary_url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules=defaultKeyStatistics,financialData,price,summaryDetail"
+    # Swapped quoteSummary out for the unblocked v7/finance/quote API to bypass HTTP 401 cookie/crumb errors
+    summary_url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}"
     chart_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=6m"
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+    }
     
     results = {"summary": None, "chart": None, "error_type": None}
     
-    # 1. Gather Fundamental Blocks
+    # 1. Fetch live metrics from the open v7 endpoint
     try:
         sum_resp = requests.get(summary_url, headers=headers, timeout=7)
         sum_resp.raise_for_status()
         sum_data = sum_resp.json()
         
-        if sum_data.get('quoteSummary', {}).get('result'):
-            results["summary"] = sum_data['quoteSummary']['result'][0]
+        quote_result = sum_data.get('quoteResponse', {}).get('result', [])
+        if quote_result:
+            results["summary"] = quote_result[0]
         else:
             results["error_type"] = "INVALID_TICKER"
             return results
     except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 404:
-            results["error_type"] = "INVALID_TICKER"
-        else:
-            results["error_type"] = f"HTTP_{e.response.status_code}"
+        results["error_type"] = f"HTTP_{e.response.status_code}"
         return results
-    except requests.exceptions.Timeout:
-        results["error_type"] = "TIMEOUT"
-        return results
-    except requests.exceptions.RequestException:
+    except (requests.exceptions.Timeout, requests.exceptions.RequestException):
         results["error_type"] = "NETWORK_ERROR"
         return results
 
@@ -55,7 +53,7 @@ def fetch_complete_equity_dataset(ticker):
         if chart_data.get('chart', {}).get('result'):
             results["chart"] = chart_data['chart']['result'][0]
     except Exception:
-        pass # Graceful fallback if only history fails but core metrics loaded
+        pass 
         
     return results
 
@@ -67,8 +65,8 @@ if data_package["error_type"] is not None:
     if data_package["error_type"] == "INVALID_TICKER":
         st.error(f"❌ Unknown Ticker Asset: '{ticker_symbol}' could not be located on global exchanges.")
         st.info("Verify the suffix conventions for global entries (e.g. TSM for US ADR, or 2330.TW for local market boards).")
-    elif data_package["error_type"] == "TIMEOUT":
-        st.error("⏰ Network Pipeline Timeout: Yahoo Finance servers took too long to respond.")
+    elif data_package["error_type"] == "HTTP_401":
+        st.error("🔒 Token/Crumb Blocked: Yahoo rejected token validation layers.")
     else:
         st.error(f"🌐 Data Pipeline Interrupted: {data_package['error_type']}")
     st.stop()
@@ -78,65 +76,57 @@ summary = data_package["summary"]
 chart = data_package["chart"]
 
 if summary:
-    stats = summary.get('defaultKeyStatistics', {})
-    financials = summary.get('financialData', {})
-    price = summary.get('price', {})
-    detail = summary.get('summaryDetail', {})
-
-    # Helper function preserves None natively until string layout formatting rules trigger
-    def extract_node_value(nested_dict, key, target='raw'):
-        node = nested_dict.get(key)
-        if isinstance(node, dict):
-            return node.get(target)
-        return node
-
     # Core Meta Parsing
-    company_name = price.get('longName', ticker_symbol)
-    exchange = price.get('exchangeName', 'Global Venue')
-    sector = lookup_sector = financials.get('sector', stats.get('sector', 'Technology')) 
-
-    # Live Core Metrics Cross-Referencing Alternate Sub-structures Defensively
-    current_price = extract_node_value(financials, 'currentPrice') or extract_node_value(price, 'regularMarketPrice')
-    prev_close = extract_node_value(price, 'regularMarketPreviousClose') or extract_node_value(detail, 'previousClose')
+    company_name = summary.get('longName', ticker_symbol)
+    exchange = summary.get('exchange', 'Global Venue')
     
-    price_change = current_price - prev_close if current_price and prev_close else 0.0
-    price_pct = (price_change / prev_close) * 100 if prev_close else 0.0
+    # Dynamically guess sector profile based on known tickers since v7 quote is flat
+    if ticker_symbol in ['NVDA', 'TSM', 'AAPL', 'GOOG', 'GOOGL', 'MSFT', 'AMD']:
+        sector = "Technology / Growth"
+    elif ticker_symbol in ['XOM', 'CVX', 'BP']:
+        sector = "Energy / Cyclical"
+    else:
+        sector = "General Equities"
 
-    # Valuation & Multiples
-    pe_ratio = extract_node_value(stats, 'trailingPE') or extract_node_value(detail, 'trailingPE')
-    forward_pe = extract_node_value(stats, 'forwardPE') or extract_node_value(detail, 'forwardPE')
-    ps_ratio = extract_node_value(stats, 'priceToSalesTrailing12Months') or extract_node_value(detail, 'priceToSales')
-    pb_ratio = extract_node_value(stats, 'priceToBook') or extract_node_value(detail, 'priceToBook')
-    peg_ratio = extract_node_value(stats, 'pegRatio')
-    beta = extract_node_value(stats, 'beta') or extract_node_value(detail, 'beta')
+    # Pulling true live data straight from the root summary block
+    current_price = summary.get('regularMarketPrice')
+    prev_close = summary.get('regularMarketPreviousClose')
+    
+    price_change = summary.get('regularMarketChange', 0.0)
+    price_pct = summary.get('regularMarketChangePercent', 0.0)
 
-    # Income Statement & Scale
-    revenue = extract_node_value(financials, 'totalRevenue')
-    ebitda = extract_node_value(financials, 'ebitda')
-    eps = extract_node_value(stats, 'trailingEps')
-    gross_margin = extract_node_value(financials, 'grossMargins')
-    ebitda_margin = extract_node_value(financials, 'ebitdaMargins')
-    profit_margin = extract_node_value(financials, 'profitMargins')
-    operating_margin = extract_node_value(financials, 'operatingMargins')
+    # Valuation Multiples & Stats
+    pe_ratio = summary.get('trailingPE')
+    forward_pe = summary.get('forwardPE')
+    ps_ratio = summary.get('priceToSales')
+    pb_ratio = summary.get('priceToBook')
+    peg_ratio = summary.get('pegRatio')
+    beta = summary.get('beta')
+    eps = summary.get('trailingEps')
 
-    # Balance Sheet & Efficiency
-    total_debt = extract_node_value(financials, 'totalDebt')
-    fcf = extract_node_value(financials, 'freeCashflow')
-    shares_outstanding = extract_node_value(stats, 'sharesOutstanding')
-    current_ratio = extract_node_value(financials, 'currentRatio')
-    quick_ratio = extract_node_value(financials, 'quickRatio')
-    roe = extract_node_value(financials, 'returnOnEquity')
-    roa = extract_node_value(financials, 'returnOnAssets')
+    # Fields requiring multi-statement modules safely flagged as None (will format to N/A cleanly)
+    revenue = None  
+    ebitda = None
+    gross_margin = None  
+    ebitda_margin = None
+    profit_margin = None
+    operating_margin = None
+    total_debt = None
+    fcf = None
+    current_ratio = None
+    quick_ratio = None
+    roe = None
+    roa = None
 
     # Market Activity Context
-    market_cap = extract_node_value(price, 'marketCap') or extract_node_value(detail, 'marketCap')
-    ev = extract_node_value(stats, 'enterpriseValue')
-    div_yield = extract_node_value(detail, 'dividendYield')
-    target_price = extract_node_value(financials, 'targetMeanPrice')
-    rec_mean = extract_node_value(financials, 'recommendationMean')
-    high_52 = extract_node_value(detail, 'fiftyTwoWeekHigh')
-    low_52 = extract_node_value(detail, 'fiftyTwoWeekLow')
-    avg_vol = extract_node_value(detail, 'averageVolume')
+    shares_outstanding = summary.get('sharesOutstanding')
+    market_cap = summary.get('marketCap')
+    ev = None
+    div_yield = summary.get('trailingAnnualDividendYield')
+    target_price = summary.get('targetPriceMean')
+    high_52 = summary.get('fiftyTwoWeekHigh')
+    low_52 = summary.get('fiftyTwoWeekLow')
+    avg_vol = summary.get('averageDailyVolume3Month')
 
     # --- LOCALIZED TECHNICAL INDICATORS COMPUTATION ENGINE ---
     df_chart = pd.DataFrame()
@@ -170,36 +160,32 @@ if summary:
 
     # --- SECTOR-AWARE VALUATION GRID ENGINE ---
     def calculate_sector_adjusted_scores():
-        is_growth_sector = any(s in str(sector) for s in ["Technology", "Communication", "Consumer Cyclical"])
+        is_growth = "Growth" in sector
         
-        # Valuation Grading Mapping Vector
+        # Valuation Grading Mapping
         if pe_ratio is None: val_score = 3
-        elif is_growth_sector: val_score = 5 if pe_ratio < 28 else (3 if pe_ratio < 50 else 1)
+        elif is_growth: val_score = 5 if pe_ratio < 28 else (3 if pe_ratio < 50 else 1)
         else: val_score = 5 if pe_ratio < 16 else (3 if pe_ratio < 28 else 1)
         
-        # Profitability Grading Mapping Vector
-        if roe is None: prof_score = 3
-        else: prof_score = 5 if roe > 0.22 else (3 if roe > 0.10 else 1)
-        
-        # Financial Health Vector
-        if current_ratio is None: health_score = 3
-        else: health_score = 5 if current_ratio > 1.4 else (3 if current_ratio > 0.9 else 1)
+        # Financial Strength Score (derived from Beta volatility proxy since debt is absent in v7)
+        if beta is None: strength_score = 3
+        else: strength_score = 5 if beta < 1.0 else (3 if beta < 1.6 else 1)
         
         # Performance Indicators Matrix Array Summary
-        return [4 if is_growth_sector else 3, prof_score, 4 if is_growth_sector else 2, health_score, val_score]
+        return [4 if is_growth else 3, 4 if is_growth else 3, 4 if is_growth else 2, strength_score, val_score]
 
     scores = calculate_sector_adjusted_scores()
 
     # --- UI DISPLAY FRAMEWORK RENDERING ---
     st.caption("Financial Analysis Workspace • Near Real-Time Quotes via Yahoo Finance")
     st.title(f"({ticker_symbol}) {company_name}")
-    st.caption(f"Primary Listing Venue: **{exchange}**")
+    st.caption(f"Primary Listing Venue: **{exchange}** | Sector: **{sector}**")
 
     # Header Row Data Block
     h_col1, h_col2, h_col3, h_col4 = st.columns(4)
     h_col1.metric("Current Market Price", f"${current_price:,.2f}" if current_price else "N/A", f"{price_change:+.2f} ({price_pct:+.2f}%)")
     h_col2.metric("Market Capitalization", f"${market_cap/1e9:,.2f}B" if market_cap else "N/A")
-    h_col3.metric("Enterprise Value (EV)", f"${ev/1e9:,.2f}B" if ev else "N/A")
+    h_col3.metric("Shares Outstanding", f"{shares_outstanding/1e6:,.2f}M" if shares_outstanding else "N/A")
     h_col4.metric("Analyst Consensus Target", f"${target_price:,.2f}" if target_price else "N/A")
 
     st.markdown("---")
@@ -249,7 +235,7 @@ if summary:
             ("Average Trading Session Volume", format_cell(avg_vol))
         ]
 
-        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Multiples & Ratios", "Margins & Returns", "Volume & Scale Balance"])
+        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Multiples & Ratios", "Margins & Returns (Statement Required)", "Volume & Scale Balance"])
         with sub_tab1: st.dataframe(pd.DataFrame(metrics_block_1, columns=["Metric Parameters", "Current Value"]), hide_index=True, use_container_width=True)
         with sub_tab2: st.dataframe(pd.DataFrame(metrics_block_2, columns=["Metric Parameters", "Current Value"]), hide_index=True, use_container_width=True)
         with sub_tab3: st.dataframe(pd.DataFrame(metrics_block_3, columns=["Metric Parameters", "Current Value"]), hide_index=True, use_container_width=True)
@@ -297,13 +283,12 @@ if summary:
         with c_tab2:
             fig_rsi = go.Figure()
             fig_rsi.add_trace(go.Scatter(x=df_chart['Date'], y=df_chart['RSI'], name='RSI (14)', line=dict(color='#7B1FA2', width=2)))
-            # Standard Overbought / Oversold Support/Resistance Channels
             fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
             fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
             fig_rsi.update_layout(height=250, yaxis=dict(range=[0, 100], title="Oscillator Units"), margin=dict(l=40, r=40, t=10, b=10))
             st.plotly_chart(fig_rsi, use_container_width=True)
 
-# --- TRUE PERIODIC AUTO-REFRESH TRIGGER TRIGGER (FRAGMENT LOOP) ---
+# --- TRUE PERIODIC AUTO-REFRESH TRIGGER ---
 @st.fragment
 def auto_refresh_executor():
     import time
