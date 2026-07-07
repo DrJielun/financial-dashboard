@@ -314,8 +314,7 @@ if raw_history is not None and info_payload is not None:
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['ADX'], mode='lines', name='ADX Strength Line', line=dict(color='#FF9100', width=2.5)), row=4, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['PlusDI'], mode='lines', name='+DI Channel', line=dict(color='#00E676', width=1.2, dash='dash')), row=3, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MinusDI'], mode='lines', name='-DI Channel', line=dict(color='#FF5252', width=1.2, dash='dot')), row=3, col=1)
-
-                fig.update_layout(
+        fig.update_layout(
             height=1100, margin=dict(l=60, r=40, t=90, b=50), template="plotly_dark",
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
