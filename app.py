@@ -302,16 +302,6 @@ if raw_history is not None and info_payload is not None:
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['BB_Lower'], mode='lines', line=dict(color='rgba(0, 230, 118, 0.25)', width=1), fill='tonexty', fillcolor='rgba(0, 230, 118, 0.02)', name='Bollinger Bands (20,2)'), row=1, col=1)
         
         fig.add_trace(go.Candlestick(x=df_view.index, open=df_view['Open'], high=df_view['High'], low=df_view['Low'], close=df_view['Close'], name='Price Bars'), row=1, col=1)
-
-fig.add_trace(
-    go.Scatter(
-        x=df.index,
-        y=df['RSI'],
-        name='RSI (14)',
-        line=dict(color='purple')
-    ),
-    row=2, col=1   # 👈 THIS is the RSI panel
-)
         
         if sma_available:
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA50'], mode='lines', name='50-Day SMA', line=dict(color='#FBC02D', width=1.5, dash='dash')), row=1, col=1)
@@ -413,11 +403,10 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
 fig = make_subplots(
-    rows=3,  # increase rows
-    cols=1,
+    rows=2, cols=1,
     shared_xaxes=True,
-    row_heights=[0.6, 0.2, 0.2],  # price, RSI, volume
-    vertical_spacing=0.02
+    row_heights=[0.7, 0.3],
+    vertical_spacing=0.05
 )
 
 fig.add_trace(go.Candlestick(
