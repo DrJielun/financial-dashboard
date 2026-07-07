@@ -9,13 +9,9 @@ import numpy as np
 st.set_page_config(layout="wide", page_title="JL Quant")
 st.title("⚡ JL Quant")
 
-# --- WATCHLIST & TICKER MANAGEMENT ---
-st.sidebar.header("Navigation & Watchlist")
-watchlist = ["AAPL", "MSFT", "NVDA", "GOOG", "META", "AMZN"]
-selected_watch = st.sidebar.selectbox("Quick Select Watchlist:", [""] + watchlist)
-
-default_ticker = selected_watch if selected_watch else "AAPL"
-ticker_symbol = st.sidebar.text_input("Manual Ticker Input:", value=default_ticker).upper().strip()
+# --- TICKER INPUT ---
+st.sidebar.header("Ticker")
+ticker_symbol = st.sidebar.text_input("Ticker Symbol:", value="AAPL").upper().strip()
 
 # --- TIMEFRAME SUPPORT CONTROLS ---
 timeframe_opts = {
@@ -219,7 +215,7 @@ if raw_history is not None and info_payload is not None:
         col_h1.metric("Closing Value (USD)", f"${latest_close:,.2f}", f"${price_change:+.2f} ({pct_change:+.2f}%)")
         col_h2.metric("Relative Volume (RVOL)", f"{latest['RVOL']:.2f}x" if pd.notna(latest['RVOL']) else "N/A", "vs 20-Day Mean")
         col_h3.metric("52-Week Range Position", f"{price_position_pct:.1f}%", f"Floor: ${low_52w:.1f}")
-        col_h4.metric(f"Benchmark Alpha ({benchmark_sym})", f"{latest['Alpha_Strength']*100:+.2f}%", "Geometric Delta")
+        col_h4.metric("Analyst Target", f"${fnd['targetPrice']:.2f}" if fnd.get("targetPrice") else "N/A")
 
         st.markdown("---")
         st.subheader("📊 Trading Signals")
