@@ -118,10 +118,14 @@ def compute_technical_indicators(df_history, df_bench):
     df['BB_Squeeze'] = df['Vol_Bandwidth'] < df['Vol_Bandwidth'].rolling(window=min(126, len(df)), min_periods=1).quantile(0.20)
     
     delta = df['Close'].diff()
-    gain, loss = delta.clip(lower=0), -delta.clip(upper=0)
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
     avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/14, adjust=False).mean()
-    df['RSI'] = 100 - (100 / (1 + (avg_gain / avg_loss.replace(0, np.nan))))
+    rs = np.divide(avg_gain, avg_loss, out=np.full(avg_gain.shape, np.inf, dtype=float), where=(avg_loss > 0))
+    rsi = 100 - (100 / (1 + rs))
+    rsi = np.where((avg_gain == 0) & (avg_loss == 0), 50, rsi)
+    df['RSI'] = pd.Series(rsi, index=df.index)
     
     df['EMA12'] = df['Close'].ewm(span=12, adjust=False).mean()
     df['EMA26'] = df['Close'].ewm(span=26, adjust=False).mean()
@@ -319,7 +323,7 @@ if raw_history is not None and info_payload is not None:
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
             xaxis=dict(rangeslider=dict(visible=False)),
-            yaxis=dict(title="Price (USD)"), yaxis2=dict(title="MACD"), yaxis3=dict(title="+DI / -DI"), yaxis4=dict(title="Volume")
+            yaxis=dict(title="Asset Price"), yaxis2=dict(title="Volume / MACD Matrix"), yaxis3=dict(title="DMI Core Tracking Matrix")
         )
         st.plotly_chart(fig, use_container_width=True)
 
