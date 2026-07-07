@@ -7,15 +7,11 @@ import numpy as np
 
 # --- 1. CONFIGURATION & APP INITIALIZATION ---
 st.set_page_config(layout="wide", page_title="JL Quant")
-st.title("⚡ JL Quant")
+st.title("JL Quant")
 
-# --- WATCHLIST & TICKER MANAGEMENT ---
-st.sidebar.header("Navigation & Watchlist")
-watchlist = ["AAPL", "MSFT", "NVDA", "GOOG", "META", "AMZN"]
-selected_watch = st.sidebar.selectbox("Quick Select Watchlist:", [""] + watchlist)
-
-default_ticker = selected_watch if selected_watch else "AAPL"
-ticker_symbol = st.sidebar.text_input("Manual Ticker Input:", value=default_ticker).upper().strip()
+# --- TICKER INPUT ---
+st.sidebar.header("Ticker")
+ticker_symbol = st.sidebar.text_input("Ticker Symbol:", value="AAPL").upper().strip()
 
 # --- TIMEFRAME SUPPORT CONTROLS ---
 timeframe_opts = {
@@ -219,7 +215,7 @@ if raw_history is not None and info_payload is not None:
         col_h1.metric("Closing Value (USD)", f"${latest_close:,.2f}", f"${price_change:+.2f} ({pct_change:+.2f}%)")
         col_h2.metric("Relative Volume (RVOL)", f"{latest['RVOL']:.2f}x" if pd.notna(latest['RVOL']) else "N/A", "vs 20-Day Mean")
         col_h3.metric("52-Week Range Position", f"{price_position_pct:.1f}%", f"Floor: ${low_52w:.1f}")
-        col_h4.metric(f"Benchmark Alpha ({benchmark_sym})", f"{latest['Alpha_Strength']*100:+.2f}%", "Geometric Delta")
+        col_h4.metric("Analyst Target", f"${fnd['targetPrice']:.2f}" if fnd.get("targetPrice") else "N/A")
 
         st.markdown("---")
         st.subheader("📊 Trading Signals")
@@ -276,7 +272,13 @@ if raw_history is not None and info_payload is not None:
                 f"* **Risk Vector Guard:** {risk_clause}")
 
         st.markdown("---")
-        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.08, row_heights=[0.62, 0.18, 0.20])
+        fig = make_subplots(
+            rows=4,
+            cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.05,
+            row_heights=[0.55,0.15,0.15,0.15]
+        )
         
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['BB_Upper'], mode='lines', line=dict(color='rgba(0, 230, 118, 0.25)', width=1), showlegend=False), row=1, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['BB_Lower'], mode='lines', line=dict(color='rgba(0, 230, 118, 0.25)', width=1), fill='tonexty', fillcolor='rgba(0, 230, 118, 0.02)', name='Bollinger Bands (20,2)'), row=1, col=1)
@@ -287,11 +289,11 @@ if raw_history is not None and info_payload is not None:
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA50'], mode='lines', name='50-Day SMA', line=dict(color='#FBC02D', width=1.5, dash='dash')), row=1, col=1)
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA200'], mode='lines', name='200-Day SMA', line=dict(color='#D32F2F', width=1.5, dash='dot')), row=1, col=1)
             
-        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume Traded', marker_color='rgba(33, 150, 243, 0.30)'), row=2, col=1)
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD Line', line=dict(color='#29B6F6', width=1.5)), row=2, col=1)
+        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume Traded', marker_color='rgba(33, 150, 243, 0.30)'), row=4, col=1)
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD Line', line=dict(color='#29B6F6', width=1.5)), row=4, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD_Signal'], mode='lines', name='MACD Signal', line=dict(color='#AB47BC', width=1.2, dash='dot')), row=2, col=1)
         
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['ADX'], mode='lines', name='ADX Strength Line', line=dict(color='#FF9100', width=2.5)), row=3, col=1)
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['ADX'], mode='lines', name='ADX Strength Line', line=dict(color='#FF9100', width=2.5)), row=4, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['PlusDI'], mode='lines', name='+DI Channel', line=dict(color='#00E676', width=1.2, dash='dash')), row=3, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MinusDI'], mode='lines', name='-DI Channel', line=dict(color='#FF5252', width=1.2, dash='dot')), row=3, col=1)
 
@@ -300,7 +302,7 @@ if raw_history is not None and info_payload is not None:
         for lvl in resistance_levels:
             fig.add_hline(y=lvl,line_dash="dot",line_color="red",annotation_text=f"R {lvl:.2f}")
         fig.update_layout(
-            height=950, margin=dict(l=60, r=40, t=90, b=50), template="plotly_dark",
+            height=1100, margin=dict(l=60, r=40, t=90, b=50), template="plotly_dark",
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
             xaxis=dict(rangeslider=dict(visible=False)),
