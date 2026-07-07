@@ -40,9 +40,6 @@ st.components.v1.html(
     height=0,
 )
 
-if not ticker_symbol.isalnum():
-    st.sidebar.warning("⚠️ Invalid ticker format detected.")
-    st.stop()
 
 # --- LONGLIVED RAW DATA & INFRASTRUCTURE CACHING ---
 @st.cache_data(ttl=86400, max_entries=100)
@@ -118,10 +115,14 @@ def compute_technical_indicators(df_history, df_bench):
     df['BB_Squeeze'] = df['Vol_Bandwidth'] < df['Vol_Bandwidth'].rolling(window=min(126, len(df)), min_periods=1).quantile(0.20)
     
     delta = df['Close'].diff()
-    gain, loss = delta.clip(lower=0), -delta.clip(upper=0)
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
     avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/14, adjust=False).mean()
-    df['RSI'] = 100 - (100 / (1 + (avg_gain / avg_loss.replace(0, np.nan))))
+    rs = np.divide(avg_gain, avg_loss, out=np.full(avg_gain.shape, np.inf, dtype=float), where=(avg_loss > 0))
+    rsi = 100 - (100 / (1 + rs))
+    rsi = np.where((avg_gain == 0) & (avg_loss == 0), 50, rsi)
+    df['RSI'] = pd.Series(rsi, index=df.index)
     
     df['EMA12'] = df['Close'].ewm(span=12, adjust=False).mean()
     df['EMA26'] = df['Close'].ewm(span=26, adjust=False).mean()
@@ -307,27 +308,19 @@ if raw_history is not None and info_payload is not None:
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA50'], mode='lines', name='50-Day SMA', line=dict(color='#FBC02D', width=1.5, dash='dash')), row=1, col=1)
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA200'], mode='lines', name='200-Day SMA', line=dict(color='#D32F2F', width=1.5, dash='dot')), row=1, col=1)
             
-        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume', marker_color='rgba(33, 150, 243, 0.30)'), row=4, col=1)
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD Line', line=dict(color='#29B6F6', width=1.5)), row=2, col=1)
+        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume Traded', marker_color='rgba(33, 150, 243, 0.30)'), row=4, col=1)
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD Line', line=dict(color='#29B6F6', width=1.5)), row=4, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD_Signal'], mode='lines', name='MACD Signal', line=dict(color='#AB47BC', width=1.2, dash='dot')), row=2, col=1)
         
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['ADX'], mode='lines', name='ADX', line=dict(color='#FF9100', width=2.5)), row=3, col=1)
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['ADX'], mode='lines', name='ADX Strength Line', line=dict(color='#FF9100', width=2.5)), row=4, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['PlusDI'], mode='lines', name='+DI Channel', line=dict(color='#00E676', width=1.2, dash='dash')), row=3, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MinusDI'], mode='lines', name='-DI Channel', line=dict(color='#FF5252', width=1.2, dash='dot')), row=3, col=1)
-
-        for lvl in support_levels[:3]:
-            fig.add_hline(y=lvl, row=1, col=1, line_color="green",
-                          line_dash="dot", line_width=1, opacity=0.35)
-
-        for lvl in resistance_levels[:3]:
-            fig.add_hline(y=lvl, row=1, col=1, line_color="red",
-                          line_dash="dot", line_width=1, opacity=0.35)
         fig.update_layout(
             height=1100, margin=dict(l=60, r=40, t=90, b=50), template="plotly_dark",
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
             xaxis=dict(rangeslider=dict(visible=False)),
-            yaxis=dict(title="Price"), yaxis2=dict(title="MACD"), yaxis3=dict(title="DMI (ADX / DI)"), yaxis4=dict(title="Volume")
+            yaxis=dict(title="Price (USD)"), yaxis2=dict(title="MACD"), yaxis3=dict(title="+DI / -DI"), yaxis4=dict(title="Volume")
         )
         st.plotly_chart(fig, use_container_width=True)
 
