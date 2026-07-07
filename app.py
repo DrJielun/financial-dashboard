@@ -65,9 +65,9 @@ def fetch_longlived_metadata(ticker_str):
     price=fast.get("lastPrice") or info.get("currentPrice") or info.get("regularMarketPrice")
     shares=info.get("sharesOutstanding") or fast.get("shares")
     payload["marketCap"]=info.get("marketCap") or (price*shares if price and shares else None)
-    for k in ["beta","averageVolume (Shares)","trailingPE","forwardPE","pegRatio","priceToBook","dividendYield","returnOnEquity","profitMargins","operatingMargins","earningsGrowth","revenueGrowth","debtToEquity","currentRatio","fiftyTwoWeekHigh","fiftyTwoWeekLow","sharesOutstanding","floatShares","shortPercentOfFloat","targetMeanPrice"]:
+    for k in ["beta","averageVolume","trailingPE","forwardPE","pegRatio","priceToBook","dividendYield","returnOnEquity","profitMargins","operatingMargins","earningsGrowth","revenueGrowth","debtToEquity","currentRatio","fiftyTwoWeekHigh","fiftyTwoWeekLow","sharesOutstanding","floatShares","shortPercentOfFloat","targetMeanPrice"]:
         payload[k]=info.get(k)
-    payload["avg_volume"]=payload.pop("averageVolume (Shares)")
+    payload["avg_volume"]=payload.pop("averageVolume")
     payload["pe_trailing"]=payload.pop("trailingPE")
     payload["pe_forward"]=payload.pop("forwardPE")
     payload["peg"]=payload.pop("pegRatio")
@@ -121,7 +121,7 @@ def compute_technical_indicators(df_history, df_bench):
     gain, loss = delta.clip(lower=0), -delta.clip(upper=0)
     avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/14, adjust=False).mean()
-    df['RSI (14)'] = 100 - (100 / (1 + (avg_gain / avg_loss.replace(0, np.nan))))
+    df['RSI'] = 100 - (100 / (1 + (avg_gain / avg_loss.replace(0, np.nan))))
     
     df['EMA12'] = df['Close'].ewm(span=12, adjust=False).mean()
     df['EMA26'] = df['Close'].ewm(span=26, adjust=False).mean()
@@ -141,7 +141,7 @@ def compute_technical_indicators(df_history, df_bench):
     df['MinusDI'] = 100 * (pd.Series(minus_dm, index=df.index).ewm(alpha=1/14, adjust=False).mean() / df['ATR'].replace(0, np.nan))
     df['ADX'] = ((abs(df['PlusDI'] - df['MinusDI']) / (df['PlusDI'] + df['MinusDI']).replace(0, np.nan)) * 100).ewm(alpha=1/14, adjust=False).mean()
     
-    df['RVOL'] = df['Volume (Shares)'] / df['Volume (Shares)'].rolling(window=min(20, len(df))).mean().replace(0, np.nan)
+    df['RVOL'] = df['Volume'] / df['Volume'].rolling(window=min(20, len(df))).mean().replace(0, np.nan)
     
     stock_ret = (1 + df['Close'].pct_change()).cumprod()
     bench_ret = (1 + df_bench['Close'].pct_change().reindex(df.index, method='ffill')).cumprod()
@@ -162,7 +162,7 @@ def generate_trading_signals(df):
             signals["Trend"]=("Bearish",-1)
         else:
             signals["Trend"]=("Neutral",0)
-    signals["RSI (14)"]=("Oversold",1) if latest["RSI (14)"]<30 else ("Overbought",-1) if latest["RSI (14)"]>70 else ("Neutral",0)
+    signals["RSI"]=("Oversold",1) if latest["RSI"]<30 else ("Overbought",-1) if latest["RSI"]>70 else ("Neutral",0)
     signals["MACD"]=("Bullish",1) if latest["MACD"]>latest["MACD_Signal"] else ("Bearish",-1)
     signals["ADX"]=("Strong Trend",1) if latest["ADX"]>25 else ("Weak Trend",0)
     if latest["Close"]>latest["BB_Upper"]:
@@ -171,7 +171,7 @@ def generate_trading_signals(df):
         signals["Bollinger"]=("Below Lower",1)
     else:
         signals["Bollinger"]=("Inside Bands",0)
-    signals["Volume (Shares)"]=("High",1) if latest["RVOL"]>1.5 else ("Normal",0)
+    signals["Volume"]=("High",1) if latest["RVOL"]>1.5 else ("Normal",0)
     score=sum(v[1] for v in signals.values())
     rating="🟢 Strong Buy" if score>=4 else "🟢 Buy" if score>=2 else "🟡 Hold" if score>=0 else "🟠 Weak Sell" if score>=-2 else "🔴 Strong Sell"
     confidence=round((score+6)/12*100)
@@ -231,7 +231,7 @@ if raw_history is not None and info_payload is not None:
         st.subheader(f"🏢 {ticker_symbol} ({fnd['longName']}) — Terminal View")
         col_h1, col_h2, col_h3, col_h4 = st.columns(4)
         col_h1.metric("Closing Value (USD)", f"${latest_close:,.2f}", f"${price_change:+.2f} ({pct_change:+.2f}%)")
-        col_h2.metric("Relative Volume (Shares) (RVOL)", f"{latest['RVOL']:.2f}x" if pd.notna(latest['RVOL']) else "N/A", "vs 20-Day Mean")
+        col_h2.metric("Relative Volume (RVOL)", f"{latest['RVOL']:.2f}x" if pd.notna(latest['RVOL']) else "N/A", "vs 20-Day Mean")
         col_h3.metric("52-Week Range Position", f"{price_position_pct:.1f}%", f"Floor: ${low_52w:.1f}")
         col_h4.metric("Analyst Target", f"${fnd['targetPrice']:.2f}" if fnd.get("targetPrice") else "N/A")
 
@@ -243,7 +243,7 @@ if raw_history is not None and info_payload is not None:
             st.metric("Confidence",f"{confidence}%")
         with c2:
             st.dataframe(pd.DataFrame({"Indicator":list(signals.keys()),"Status":[v[0] for v in signals.values()]}),hide_index=True,use_container_width=True)
-        latest_rsi = latest['RSI (14)']
+        latest_rsi = latest['RSI']
         latest_upper_bb = latest['BB_Upper']
         latest_lower_bb = latest['BB_Lower']
         latest_adx = latest['ADX']
@@ -307,7 +307,7 @@ if raw_history is not None and info_payload is not None:
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA50'], mode='lines', name='50-Day SMA', line=dict(color='#FBC02D', width=1.5, dash='dash')), row=1, col=1)
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA200'], mode='lines', name='200-Day SMA', line=dict(color='#D32F2F', width=1.5, dash='dot')), row=1, col=1)
             
-        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume (Shares)'], name='Volume (Shares)', marker_color='rgba(33, 150, 243, 0.30)'), row=4, col=1)
+        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume', marker_color='rgba(33, 150, 243, 0.30)'), row=4, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD Line', line=dict(color='#29B6F6', width=1.5)), row=2, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD_Signal'], mode='lines', name='MACD Signal', line=dict(color='#AB47BC', width=1.2, dash='dot')), row=2, col=1)
         
@@ -327,7 +327,7 @@ if raw_history is not None and info_payload is not None:
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
             xaxis=dict(rangeslider=dict(visible=False)),
-            yaxis=dict(title="Price"), yaxis2=dict(title="MACD"), yaxis3=dict(title="DMI (ADX / DI)"), yaxis4=dict(title="Volume (Shares)")
+            yaxis=dict(title="Price"), yaxis2=dict(title="MACD"), yaxis3=dict(title="DMI (ADX / DI)"), yaxis4=dict(title="Volume")
         )
         st.plotly_chart(fig, use_container_width=True)
 
@@ -343,7 +343,7 @@ if raw_history is not None and info_payload is not None:
         st.markdown("#### **Corporate Overview**")
         st.markdown(f"**Market Cap:** `{fmt_v(fnd['marketCap'], 'mcap')}`")
         st.markdown(f"**Beta Risk Value:** `{fmt_v(fnd['beta'])}`")
-        st.markdown(f"**Average Volume (Shares):** `{fmt_v(fnd['avg_volume'], 'vol')}`")
+        st.markdown(f"**Average Volume:** `{fmt_v(fnd['avg_volume'], 'vol')}`")
         st.markdown(f"**Shares Outstanding:** `{fmt_v(fnd['sharesOutstanding'], 'vol')}`")
         st.markdown(f"**Float Percentage:** `{fmt_v(fnd['floatShares'], 'vol')}`")
         st.markdown(f"**Short % of Float:** `{fmt_v(fnd['shortInterest'], 'pct')}`")
@@ -378,7 +378,7 @@ else:
     st.error(f"❌ Core Data Exception: Historical records for symbol '{ticker_symbol}' could not be safely parsed.")
 
 
-# ===== FIXED RSI (14) (Wilder) =====
+# ===== FIXED RSI (Wilder) =====
 def compute_rsi(series, period=14):
     delta = series.diff()
     gain = delta.clip(lower=0)
@@ -391,14 +391,14 @@ def compute_rsi(series, period=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# Apply RSI (14) safely
-df["RSI (14)"] = compute_rsi(df["Close"])
+# Apply RSI safely
+df["RSI"] = compute_rsi(df["Close"])
 
 # ===== FIX NaN BUG =====
 df = df.copy()
-df = df.dropna(subset=["RSI (14)", "Close", "High", "Low"])
+df = df.dropna(subset=["RSI", "Close", "High", "Low"])
 
-# ===== ADD RSI (14) PANEL =====
+# ===== ADD RSI PANEL =====
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
@@ -420,13 +420,13 @@ fig.add_trace(go.Candlestick(
 
 fig.add_trace(go.Scatter(
     x=df.index,
-    y=df["RSI (14)"],
-    name="RSI (14)",
+    y=df["RSI"],
+    name="RSI",
 ), row=2, col=1)
 
 fig.add_hline(y=70, line_dash="dash", row=2, col=1)
 fig.add_hline(y=30, line_dash="dash", row=2, col=1)
 
-fig.update_layout(title="Price + RSI (14)", xaxis_rangeslider_visible=False)
+fig.update_layout(title="Price + RSI", xaxis_rangeslider_visible=False)
 
 fig.show()
