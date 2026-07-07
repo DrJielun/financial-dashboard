@@ -2,5 +2,4 @@ streamlit
 plotly
 pandas
 numpy
-yfinancestreamlit
 yfinance
