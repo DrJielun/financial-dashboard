@@ -1,5 +1,5 @@
-streamlit
-plotly
-pandas
-numpy
-yfinance
+streamlit==1.38.0
+plotly==5.24.1
+pandas==2.2.3
+numpy==1.26.4
+yfinance[nospam]==0.2.66
