@@ -307,11 +307,11 @@ if raw_history is not None and info_payload is not None:
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA50'], mode='lines', name='50-Day SMA', line=dict(color='#FBC02D', width=1.5, dash='dash')), row=1, col=1)
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA200'], mode='lines', name='200-Day SMA', line=dict(color='#D32F2F', width=1.5, dash='dot')), row=1, col=1)
             
-        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume Traded', marker_color='rgba(33, 150, 243, 0.30)'), row=4, col=1)
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD Line', line=dict(color='#29B6F6', width=1.5)), row=4, col=1)
+        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume', marker_color='rgba(33, 150, 243, 0.30)'), row=4, col=1)
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD Line', line=dict(color='#29B6F6', width=1.5)), row=2, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD_Signal'], mode='lines', name='MACD Signal', line=dict(color='#AB47BC', width=1.2, dash='dot')), row=2, col=1)
         
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['ADX'], mode='lines', name='ADX Strength Line', line=dict(color='#FF9100', width=2.5)), row=4, col=1)
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['ADX'], mode='lines', name='ADX', line=dict(color='#FF9100', width=2.5)), row=3, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['PlusDI'], mode='lines', name='+DI Channel', line=dict(color='#00E676', width=1.2, dash='dash')), row=3, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MinusDI'], mode='lines', name='-DI Channel', line=dict(color='#FF5252', width=1.2, dash='dot')), row=3, col=1)
 
@@ -327,7 +327,7 @@ if raw_history is not None and info_payload is not None:
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
             xaxis=dict(rangeslider=dict(visible=False)),
-            yaxis=dict(title="Asset Price"), yaxis2=dict(title="Volume / MACD Matrix"), yaxis3=dict(title="DMI Core Tracking Matrix")
+            yaxis=dict(title="Price"), yaxis2=dict(title="MACD"), yaxis3=dict(title="DMI (ADX / DI)"), yaxis4=dict(title="Volume")
         )
         st.plotly_chart(fig, use_container_width=True)
 
