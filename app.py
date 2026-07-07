@@ -40,9 +40,6 @@ st.components.v1.html(
     height=0,
 )
 
-if not ticker_symbol.isalnum():
-    st.sidebar.warning("⚠️ Invalid ticker format detected.")
-    st.stop()
 
 # --- LONGLIVED RAW DATA & INFRASTRUCTURE CACHING ---
 @st.cache_data(ttl=86400, max_entries=100)
@@ -323,7 +320,7 @@ if raw_history is not None and info_payload is not None:
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
             xaxis=dict(rangeslider=dict(visible=False)),
-            yaxis=dict(title="Asset Price"), yaxis2=dict(title="Volume / MACD Matrix"), yaxis3=dict(title="DMI Core Tracking Matrix")
+            yaxis=dict(title="Price (USD)"), yaxis2=dict(title="MACD"), yaxis3=dict(title="+DI / -DI"), yaxis4=dict(title="Volume")
         )
         st.plotly_chart(fig, use_container_width=True)
 
