@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
+import time
 
 # --- 1. CONFIGURATION & APP INITIALIZATION ---
 st.set_page_config(layout="wide", page_title="JL Quant")
@@ -28,7 +29,9 @@ period_val = timeframe_opts[selected_tf]["period"]
 benchmark_sym = st.sidebar.selectbox("Relative Strength Benchmark:", ["SPY", "QQQ", "XLK"], index=0)
 
 # --- AUTO-REFRESH CONFIGURATION ---
-refresh_rate = st.sidebar.slider("Live Data Auto-Refresh (Seconds):", min_value=10, max_value=60, value=15)
+refresh_rate = st.sidebar.slider("Live Data Auto-Refresh (Seconds):", min_value=10, max_value=60, value=30)
+if refresh_rate < 20:
+    st.sidebar.caption("⚠️ Refreshing faster than ~20s increases the chance of Yahoo rate-limiting fundamentals data.")
 st.components.v1.html(
     f"""
     <script>
@@ -40,24 +43,36 @@ st.components.v1.html(
     height=0,
 )
 
+import re
+if not ticker_symbol or not re.fullmatch(r"[A-Z0-9.\-]{1,10}", ticker_symbol):
+    st.sidebar.warning("⚠️ Invalid ticker format detected.")
+    st.stop()
 
 # --- LONGLIVED RAW DATA & INFRASTRUCTURE CACHING ---
-@st.cache_data(ttl=86400, max_entries=100)
-def fetch_ticker_info_blob(ticker_str):
-    try:
-        return yf.Ticker(ticker_str).info
-    except Exception:
-        return {}
-
 @st.cache_data(ttl=300)
 def fetch_longlived_metadata(ticker_str):
-    t=yf.Ticker(ticker_str)
-    fast=getattr(t,"fast_info",{}) or {}
-    try:
-        info=t.info or {}
-    except Exception:
-        info={}
+    t = yf.Ticker(ticker_str)
+    fast = getattr(t, "fast_info", {}) or {}
+
+    info = {}
+    debug_error = None
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            fetched = t.info
+            if fetched:
+                info = fetched
+                debug_error = None
+                break
+            else:
+                debug_error = "Yahoo returned an empty payload for .info (no exception raised)."
+        except Exception as e:
+            debug_error = f"{type(e).__name__}: {e}"
+        if attempt < max_attempts - 1:
+            time.sleep(1.5 * (attempt + 1))  # backoff: 1.5s, 3s
+
     payload={}
+    payload["_debug_error"] = debug_error
     payload["longName"]=info.get("longName") or info.get("shortName") or fast.get("shortName") or ticker_str
     price=fast.get("lastPrice") or info.get("currentPrice") or info.get("regularMarketPrice")
     shares=info.get("sharesOutstanding") or fast.get("shares")
@@ -115,14 +130,10 @@ def compute_technical_indicators(df_history, df_bench):
     df['BB_Squeeze'] = df['Vol_Bandwidth'] < df['Vol_Bandwidth'].rolling(window=min(126, len(df)), min_periods=1).quantile(0.20)
     
     delta = df['Close'].diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
+    gain, loss = delta.clip(lower=0), -delta.clip(upper=0)
     avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/14, adjust=False).mean()
-    rs = np.divide(avg_gain, avg_loss, out=np.full(avg_gain.shape, np.inf, dtype=float), where=(avg_loss > 0))
-    rsi = 100 - (100 / (1 + rs))
-    rsi = np.where((avg_gain == 0) & (avg_loss == 0), 50, rsi)
-    df['RSI'] = pd.Series(rsi, index=df.index)
+    df['RSI'] = 100 - (100 / (1 + (avg_gain / avg_loss.replace(0, np.nan))))
     
     df['EMA12'] = df['Close'].ewm(span=12, adjust=False).mean()
     df['EMA26'] = df['Close'].ewm(span=26, adjust=False).mean()
@@ -209,6 +220,11 @@ with st.spinner("Executing real-time pipeline algorithms..."):
 
 if raw_history is not None and info_payload is not None:
     fnd = fetch_longlived_metadata(ticker_symbol)
+    if fnd.get("_debug_error"):
+        st.sidebar.warning("⚠️ Fundamentals fetch degraded")
+        with st.sidebar.expander("Debug: why fundamentals show N/A"):
+            st.code(fnd["_debug_error"])
+            st.caption("This usually means Yahoo Finance rate-limited or blocked the `.info` request. Price/volume data (from `fast_info`) is a separate, lighter endpoint and is unaffected.")
     df_view = compute_technical_indicators(raw_history, bench_history)
     support_levels,resistance_levels=detect_support_resistance(df_view)
     signals,rating,confidence=generate_trading_signals(df_view)
@@ -292,11 +308,11 @@ if raw_history is not None and info_payload is not None:
 
         st.markdown("---")
         fig = make_subplots(
-            rows=4,
+            rows=5,
             cols=1,
             shared_xaxes=True,
-            vertical_spacing=0.05,
-            row_heights=[0.55,0.15,0.15,0.15]
+            vertical_spacing=0.04,
+            row_heights=[0.42,0.15,0.15,0.14,0.14]
         )
         
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['BB_Upper'], mode='lines', line=dict(color='rgba(0, 230, 118, 0.25)', width=1), showlegend=False), row=1, col=1)
@@ -308,19 +324,33 @@ if raw_history is not None and info_payload is not None:
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA50'], mode='lines', name='50-Day SMA', line=dict(color='#FBC02D', width=1.5, dash='dash')), row=1, col=1)
             fig.add_trace(go.Scatter(x=df_view.index, y=df_view['SMA200'], mode='lines', name='200-Day SMA', line=dict(color='#D32F2F', width=1.5, dash='dot')), row=1, col=1)
             
-        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume Traded', marker_color='rgba(33, 150, 243, 0.30)'), row=4, col=1)
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD Line', line=dict(color='#29B6F6', width=1.5)), row=4, col=1)
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD'], mode='lines', name='MACD Line', line=dict(color='#29B6F6', width=1.5)), row=2, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MACD_Signal'], mode='lines', name='MACD Signal', line=dict(color='#AB47BC', width=1.2, dash='dot')), row=2, col=1)
         
-        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['ADX'], mode='lines', name='ADX Strength Line', line=dict(color='#FF9100', width=2.5)), row=4, col=1)
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['ADX'], mode='lines', name='ADX', line=dict(color='#FF9100', width=2.5)), row=3, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['PlusDI'], mode='lines', name='+DI Channel', line=dict(color='#00E676', width=1.2, dash='dash')), row=3, col=1)
         fig.add_trace(go.Scatter(x=df_view.index, y=df_view['MinusDI'], mode='lines', name='-DI Channel', line=dict(color='#FF5252', width=1.2, dash='dot')), row=3, col=1)
+
+        fig.add_trace(go.Scatter(x=df_view.index, y=df_view['RSI'], mode='lines', name='RSI (14)', line=dict(color='#40C4FF', width=1.5)), row=4, col=1)
+        fig.add_hline(y=70, row=4, col=1, line_color="red", line_dash="dash", line_width=1, opacity=0.5)
+        fig.add_hline(y=30, row=4, col=1, line_color="green", line_dash="dash", line_width=1, opacity=0.5)
+
+        fig.add_trace(go.Bar(x=df_view.index, y=df_view['Volume'], name='Volume', marker_color='rgba(33, 150, 243, 0.30)'), row=5, col=1)
+
+        for lvl in support_levels[:3]:
+            fig.add_hline(y=lvl, row=1, col=1, line_color="green",
+                          line_dash="dot", line_width=1, opacity=0.35)
+
+        for lvl in resistance_levels[:3]:
+            fig.add_hline(y=lvl, row=1, col=1, line_color="red",
+                          line_dash="dot", line_width=1, opacity=0.35)
         fig.update_layout(
-            height=1100, margin=dict(l=60, r=40, t=90, b=50), template="plotly_dark",
+            height=1250, margin=dict(l=60, r=40, t=90, b=50), template="plotly_dark",
             hovermode="x unified",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), 
             xaxis=dict(rangeslider=dict(visible=False)),
-            yaxis=dict(title="Price (USD)"), yaxis2=dict(title="MACD"), yaxis3=dict(title="+DI / -DI"), yaxis4=dict(title="Volume")
+            yaxis=dict(title="Price"), yaxis2=dict(title="MACD"), yaxis3=dict(title="DMI (ADX / DI)"),
+            yaxis4=dict(title="RSI", range=[0, 100]), yaxis5=dict(title="Volume")
         )
         st.plotly_chart(fig, use_container_width=True)
 
@@ -338,7 +368,7 @@ if raw_history is not None and info_payload is not None:
         st.markdown(f"**Beta Risk Value:** `{fmt_v(fnd['beta'])}`")
         st.markdown(f"**Average Volume:** `{fmt_v(fnd['avg_volume'], 'vol')}`")
         st.markdown(f"**Shares Outstanding:** `{fmt_v(fnd['sharesOutstanding'], 'vol')}`")
-        st.markdown(f"**Float Percentage:** `{fmt_v(fnd['floatShares'], 'vol')}`")
+        st.markdown(f"**Float Shares:** `{fmt_v(fnd['floatShares'], 'vol')}`")
         st.markdown(f"**Short % of Float:** `{fmt_v(fnd['shortInterest'], 'pct')}`")
         
         st.markdown("---")
