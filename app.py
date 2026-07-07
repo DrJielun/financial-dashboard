@@ -177,12 +177,30 @@ def generate_trading_signals(df):
     confidence=round((score+6)/12*100)
     return signals,rating,confidence
 
-def detect_support_resistance(df,window=10):
-    highs=[];lows=[]
-    for i in range(window,len(df)-window):
-        if df["High"].iloc[i]==df["High"].iloc[i-window:i+window+1].max(): highs.append(df["High"].iloc[i])
-        if df["Low"].iloc[i]==df["Low"].iloc[i-window:i+window+1].min(): lows.append(df["Low"].iloc[i])
-    return sorted(set(lows))[:5],sorted(set(highs),reverse=True)[:5]
+def detect_support_resistance(df, window=10, cluster_pct=0.015, max_levels=3):
+    highs=[]; lows=[]
+    for i in range(window, len(df)-window):
+        if df["High"].iloc[i] == df["High"].iloc[i-window:i+window+1].max():
+            highs.append(df["High"].iloc[i])
+        if df["Low"].iloc[i] == df["Low"].iloc[i-window:i+window+1].min():
+            lows.append(df["Low"].iloc[i])
+    def cluster(levels, reverse=False):
+        levels=sorted(levels, reverse=reverse)
+        zones=[]
+        for lvl in levels:
+            placed=False
+            for z in zones:
+                if abs(lvl-z["price"])/z["price"]<=cluster_pct:
+                    z["vals"].append(lvl)
+                    z["price"]=sum(z["vals"])/len(z["vals"])
+                    placed=True
+                    break
+            if not placed:
+                zones.append({"price":lvl,"vals":[lvl]})
+        zones=sorted(zones,key=lambda z:(len(z["vals"]), z["price"]), reverse=True)
+        prices=[z["price"] for z in zones[:max_levels]]
+        return sorted(prices, reverse=reverse)
+    return cluster(lows), cluster(highs, reverse=True)
 
 # --- LAYER 3: LAYOUT MATRIX RENDERING ENGINE ---
 with st.spinner("Executing real-time pipeline algorithms..."):
