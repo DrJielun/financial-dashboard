@@ -401,24 +401,35 @@ else:
     st.error(f"❌ Core Data Exception: Historical records for symbol '{ticker_symbol}' could not be safely parsed.")
 
 
-# ===== SMART METRICS (PATCHED SAFE VERSION) =====
+# ===== SMART METRICS (FULL SAFE PATCH) =====
 st.markdown("---")
 st.markdown("## Smart Metrics")
 
-def safe_col(name_list):
-    for name in name_list:
-        if name in df.columns:
-            return df[name]
+def safe_col(df_obj, names):
+    for n in names:
+        if n in df_obj.columns:
+            return df_obj[n]
     return None
 
 try:
-    # ===== SAFE COLUMN FETCH =====
-    rsi_col = safe_col(['RSI', 'rsi'])
-    macd_col = safe_col(['MACD', 'macd'])
-    adx_col = safe_col(['ADX', 'adx'])
+    # ✅ AUTO-DETECT DATAFRAME
+    data_src = None
+    for name in ['df', 'data', 'prices', 'hist']:
+        if name in locals():
+            data_src = locals()[name]
+            break
 
-    sma50 = df['Close'].rolling(50).mean().iloc[-1]
-    sma200 = df['Close'].rolling(200).mean().iloc[-1]
+    if data_src is None:
+        st.error("No dataframe found (df/data/prices/hist)")
+        st.stop()
+
+    # ===== INDICATORS =====
+    rsi_col = safe_col(data_src, ['RSI', 'rsi'])
+    macd_col = safe_col(data_src, ['MACD', 'macd'])
+    adx_col = safe_col(data_src, ['ADX', 'adx'])
+
+    sma50 = data_src['Close'].rolling(50).mean().iloc[-1]
+    sma200 = data_src['Close'].rolling(200).mean().iloc[-1]
 
     # ===== CROSS =====
     cross = "N/A"
@@ -444,14 +455,13 @@ try:
     except:
         pre, post = None, None
 
-    # ===== ROW 1 =====
+    # ===== UI =====
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("RSI", f"{rsi_col.iloc[-1]:.2f}" if rsi_col is not None else "N/A")
     c2.metric("ADX", f"{adx_col.iloc[-1]:.2f}" if adx_col is not None else "N/A")
     c3.metric("Trend", trend)
     c4.metric("MACD", f"{macd_col.iloc[-1]:.2f}" if macd_col is not None else "N/A")
 
-    # ===== ROW 2 =====
     c5, c6, c7, c8 = st.columns(4)
     c5.metric("SMA50", f"{sma50:.2f}")
     c6.metric("SMA200", f"{sma200:.2f}")
