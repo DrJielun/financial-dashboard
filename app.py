@@ -119,8 +119,8 @@ def get_raw_market_data(ticker_str, benchmark_str, period_str):
 def compute_technical_indicators(df_history, df_bench):
     df = df_history.copy()
     
-    df['SMA50'] = df['Close'].rolling(window=50, min_periods=50).mean()
-    df['SMA200'] = df['Close'].rolling(window=200, min_periods=200).mean()
+    df['SMA50'] = df['Close'].rolling(window=min(50, len(df))).mean()
+    df['SMA200'] = df['Close'].rolling(window=min(200, len(df))).mean()
     df['MA20'] = df['Close'].rolling(window=min(20, len(df))).mean()
     df['Std20'] = df['Close'].rolling(window=min(20, len(df))).std()
     df['BB_Upper'] = df['MA20'] + (2 * df['Std20'])
@@ -133,9 +133,7 @@ def compute_technical_indicators(df_history, df_bench):
     gain, loss = delta.clip(lower=0), -delta.clip(upper=0)
     avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/14, adjust=False).mean()
-    rs=avg_gain/avg_loss.replace(0,np.nan)
-df['RSI']=100-(100/(1+rs))
-df.loc[avg_loss==0,'RSI']=100
+    df['RSI'] = 100 - (100 / (1 + (avg_gain / avg_loss.replace(0, np.nan))))
     
     df['EMA12'] = df['Close'].ewm(span=12, adjust=False).mean()
     df['EMA26'] = df['Close'].ewm(span=26, adjust=False).mean()
@@ -143,17 +141,34 @@ df.loc[avg_loss==0,'RSI']=100
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
     
-    high, low, close = df['High'], df['Low'], df['Close']
-    up_move = high - high.shift(1)
-    down_move = low.shift(1) - low
-    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
-    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
-    tr = pd.concat([high - low, abs(high - close.shift(1)), abs(low - close.shift(1))], axis=1).max(axis=1)
+    # ===== Improved Wilder-style ADX =====
+    high = df["High"]
+    low = df["Low"]
+    close = df["Close"]
 
-    df['ATR'] = tr.ewm(alpha=1/14, adjust=False).mean()
-    df['PlusDI'] = 100 * (pd.Series(plus_dm, index=df.index).ewm(alpha=1/14, adjust=False).mean() / df['ATR'].replace(0, np.nan))
-    df['MinusDI'] = 100 * (pd.Series(minus_dm, index=df.index).ewm(alpha=1/14, adjust=False).mean() / df['ATR'].replace(0, np.nan))
-    df['ADX'] = ((abs(df['PlusDI'] - df['MinusDI']) / (df['PlusDI'] + df['MinusDI']).replace(0, np.nan)) * 100).ewm(alpha=1/14, adjust=False).mean()
+    tr = pd.concat([
+        high - low,
+        (high - close.shift()).abs(),
+        (low - close.shift()).abs()
+    ], axis=1).max(axis=1)
+
+    up_move = high.diff()
+    down_move = -low.diff()
+
+    plus_dm = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0), index=df.index)
+    minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0), index=df.index)
+
+    period = 14
+    atr = tr.ewm(alpha=1/period, adjust=False).mean()
+    plus_sm = plus_dm.ewm(alpha=1/period, adjust=False).mean()
+    minus_sm = minus_dm.ewm(alpha=1/period, adjust=False).mean()
+
+    df["ATR"] = atr
+    df["PlusDI"] = 100 * plus_sm / atr
+    df["MinusDI"] = 100 * minus_sm / atr
+
+    dx = ((df["PlusDI"] - df["MinusDI"]).abs() / (df["PlusDI"] + df["MinusDI"])) * 100
+    df["ADX"] = dx.ewm(alpha=1/period, adjust=False).mean()
     
     df['RVOL'] = df['Volume'] / df['Volume'].rolling(window=min(20, len(df))).mean().replace(0, np.nan)
     
