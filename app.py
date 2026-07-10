@@ -1,24 +1,3 @@
-
-def get_extended_prices(ticker):
-    pre = None
-    post = None
-    try:
-        info = ticker.info
-        pre = info.get("preMarketPrice")
-        post = info.get("postMarketPrice")
-    except Exception:
-        pass
-    try:
-        fi = getattr(ticker, "fast_info", {})
-        if pre is None:
-            pre = fi.get("preMarketPrice", None)
-        if post is None:
-            post = fi.get("postMarketPrice", None)
-    except Exception:
-        pass
-    return pre, post
-
-
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
@@ -487,20 +466,42 @@ except Exception as e:
 
 
 
-# SMART METRICS (UPGRADED UI)
-try:
-    import streamlit as st
+# SMART METRICS (SAFE & CLEAN)
+import streamlit as st
 
-    st.markdown("---")
-    st.markdown("### 📊 Metrics")
+st.markdown("---")
+st.markdown("### 📊 Metrics")
+
+try:
+    # Ensure ticker exists
+    ticker_obj = ticker if 'ticker' in locals() else None
+
+    info = {}
+    if ticker_obj is not None:
+        try:
+            info = ticker_obj.info
+        except Exception:
+            info = {}
+
+    # Helper for extended prices
+    def get_extended_prices_safe(t):
+        pre, post = None, None
+        if t is None:
+            return pre, post
+        try:
+            data = t.info
+            pre = data.get("preMarketPrice")
+            post = data.get("postMarketPrice")
+        except Exception:
+            pass
+        return pre, post
+
+    pre_price, post_price = get_extended_prices_safe(ticker_obj)
 
     col1, col2, col3, col4 = st.columns(4)
 
-    # Fetch extended prices
-    pre_price, post_price = get_extended_prices(ticker)
-
     with col1:
-        st.metric("Market Cap", f"{info.get('marketCap', 'N/A'):,}" if info.get('marketCap') else "N/A")
+        st.metric("Market Cap", f"{info.get('marketCap'):,}" if info.get('marketCap') else "N/A")
         st.metric("EPS", round(info.get("trailingEps", 0), 2) if info.get("trailingEps") else "N/A")
 
     with col2:
@@ -516,5 +517,4 @@ try:
         st.metric("After-Hours", round(post_price, 2) if post_price else "N/A")
 
 except Exception as e:
-    st.write("Metrics unavailable:", e)
-# END SMART METRICS
+    st.error(f"Metrics error: {e}")
