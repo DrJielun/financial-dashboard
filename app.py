@@ -1,3 +1,24 @@
+
+def get_extended_prices(ticker):
+    pre = None
+    post = None
+    try:
+        info = ticker.info
+        pre = info.get("preMarketPrice")
+        post = info.get("postMarketPrice")
+    except Exception:
+        pass
+    try:
+        fi = getattr(ticker, "fast_info", {})
+        if pre is None:
+            pre = fi.get("preMarketPrice", None)
+        if post is None:
+            post = fi.get("postMarketPrice", None)
+    except Exception:
+        pass
+    return pre, post
+
+
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
@@ -463,3 +484,37 @@ try:
 except Exception as e:
     st.write("Smart metrics error:", e)
 # ===============================
+
+
+
+# SMART METRICS (UPGRADED UI)
+try:
+    import streamlit as st
+
+    st.markdown("---")
+    st.markdown("### 📊 Metrics")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    # Fetch extended prices
+    pre_price, post_price = get_extended_prices(ticker)
+
+    with col1:
+        st.metric("Market Cap", f"{info.get('marketCap', 'N/A'):,}" if info.get('marketCap') else "N/A")
+        st.metric("EPS", round(info.get("trailingEps", 0), 2) if info.get("trailingEps") else "N/A")
+
+    with col2:
+        st.metric("PE Ratio", round(info.get("trailingPE", 0), 2) if info.get("trailingPE") else "N/A")
+        st.metric("Dividend Yield", f"{round(info.get('dividendYield', 0)*100,2)}%" if info.get("dividendYield") else "N/A")
+
+    with col3:
+        st.metric("52W High", round(info.get("fiftyTwoWeekHigh", 0), 2) if info.get("fiftyTwoWeekHigh") else "N/A")
+        st.metric("52W Low", round(info.get("fiftyTwoWeekLow", 0), 2) if info.get("fiftyTwoWeekLow") else "N/A")
+
+    with col4:
+        st.metric("Pre-Market", round(pre_price, 2) if pre_price else "N/A")
+        st.metric("After-Hours", round(post_price, 2) if post_price else "N/A")
+
+except Exception as e:
+    st.write("Metrics unavailable:", e)
+# END SMART METRICS
