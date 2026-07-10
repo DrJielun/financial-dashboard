@@ -140,18 +140,19 @@ def compute_technical_indicators(df_history, df_bench):
     df['MACD'] = df['EMA12'] - df['EMA26']
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
-    
-    high, low, close = df['High'], df['Low'], df['Close']
-    up_move = high - high.shift(1)
-    down_move = low.shift(1) - low
-    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
-    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
-    tr = pd.concat([high - low, abs(high - close.shift(1)), abs(low - close.shift(1))], axis=1).max(axis=1)
 
-    df['ATR'] = tr.ewm(alpha=1/14, adjust=False).mean()
-    df['PlusDI'] = 100 * (pd.Series(plus_dm, index=df.index).ewm(alpha=1/14, adjust=False).mean() / df['ATR'].replace(0, np.nan))
-    df['MinusDI'] = 100 * (pd.Series(minus_dm, index=df.index).ewm(alpha=1/14, adjust=False).mean() / df['ATR'].replace(0, np.nan))
-    df['ADX'] = ((abs(df['PlusDI'] - df['MinusDI']) / (df['PlusDI'] + df['MinusDI']).replace(0, np.nan)) * 100).ewm(alpha=1/14, adjust=False).mean()
+    from ta.trend import ADXIndicator
+
+    adx = ADXIndicator(
+        high=df["High"],
+        low=df["Low"],
+        close=df["Close"],
+        window=14
+    )
+
+    df["ADX"] = adx.adx()
+    df["PlusDI"] = adx.adx_pos()
+    df["MinusDI"] = adx.adx_neg()
     
     df['RVOL'] = df['Volume'] / df['Volume'].rolling(window=min(20, len(df))).mean().replace(0, np.nan)
     
