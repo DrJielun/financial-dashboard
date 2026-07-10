@@ -400,78 +400,60 @@ if raw_history is not None and info_payload is not None:
 else:
     st.error(f"❌ Core Data Exception: Historical records for symbol '{ticker_symbol}' could not be safely parsed.")
 
+
 # ===== SMART METRICS PANEL =====
-def trend_arrow(val_series):
-    if len(val_series) < 2:
-        return "→", "gray"
-    if val_series.iloc[-1] > val_series.iloc[-2]:
-        return "↑", "green"
-    elif val_series.iloc[-1] < val_series.iloc[-2]:
-        return "↓", "red"
-    return "→", "gray"
-
-def interpret_rsi(rsi):
-    if rsi > 70:
-        return "Overbought ⚠️"
-    elif rsi < 30:
-        return "Oversold 🟢"
-    return "Neutral"
-
-def interpret_macd(macd, signal):
-    if macd > signal:
-        return "Bullish 🟢"
-    elif macd < signal:
-        return "Bearish 🔴"
-    return "Neutral"
+st.markdown("---")
+st.subheader("📈 Smart Metrics")
 
 try:
-    st.subheader("Smart Metrics")
+    latest=df_view.iloc[-1]
 
-    latest = df_view.iloc[-1]
+    def adx_state(v):
+        if pd.isna(v): return "N/A"
+        if v<20: return "Weak"
+        if v<25: return "Building"
+        if v<40: return "Strong"
+        if v<60: return "Very Strong"
+        return "Extreme"
 
-    rsi = latest.get("RSI", None)
-    macd = latest.get("MACD", None)
-    signal = latest.get("MACD_Signal", None)
-    sma50 = latest.get("SMA50", None)
-    sma200 = latest.get("SMA200", None)
+    cross="Bullish"
+    if pd.notna(latest["SMA50"]) and pd.notna(latest["SMA200"]):
+        p50=df_view["SMA50"].iloc[-2]
+        p200=df_view["SMA200"].iloc[-2]
+        if p50<p200 and latest["SMA50"]>latest["SMA200"]:
+            cross="🟢 GOLDEN CROSS"
+        elif p50>p200 and latest["SMA50"]<latest["SMA200"]:
+            cross="🔴 DEATH CROSS"
+        elif latest["SMA50"]>latest["SMA200"]:
+            cross="Bullish Trend"
+        else:
+            cross="Bearish Trend"
 
-    col1, col2, col3 = st.columns(3)
+    metrics=pd.DataFrame({
+        "Metric":["RSI","MACD","ADX","RVOL","SMA50","SMA200","MA Cross"],
+        "Value":[
+            f"{latest['RSI']:.2f}",
+            f"{latest['MACD']:.2f}",
+            f"{latest['ADX']:.2f}",
+            f"{latest['RVOL']:.2f}x",
+            f"{latest['SMA50']:.2f}",
+            f"{latest['SMA200']:.2f}",
+            cross
+        ],
+        "Status":[
+            "Overbought" if latest["RSI"]>70 else "Oversold" if latest["RSI"]<30 else "Neutral",
+            "Bullish" if latest["MACD"]>latest["MACD_Signal"] else "Bearish",
+            adx_state(latest["ADX"]),
+            "High" if latest["RVOL"]>1.5 else "Normal",
+            "Rising" if latest["SMA50"]>df_view["SMA50"].iloc[-2] else "Falling",
+            "Rising" if latest["SMA200"]>df_view["SMA200"].iloc[-2] else "Falling",
+            ""
+        ]
+    })
 
-    if rsi is not None:
-        arrow, _ = trend_arrow(df_view["RSI"])
-        col1.metric("RSI(14)", f"{rsi:.2f} {arrow}", interpret_rsi(rsi))
-
-    if macd is not None and signal is not None:
-        arrow, _ = trend_arrow(df_view["MACD"])
-        col2.metric("MACD", f"{macd:.2f} {arrow}", interpret_macd(macd, signal))
-
-    if sma50 is not None:
-        arrow, _ = trend_arrow(df_view["SMA50"])
-        trend = "Above SMA200 🟢" if sma200 and sma50 > sma200 else "Below SMA200 🔴"
-        col3.metric("SMA50", f"{sma50:.2f} {arrow}", trend)
-
-    col4, col5 = st.columns(2)
-
-    if sma200 is not None:
-        arrow, _ = trend_arrow(df_view["SMA200"])
-        col4.metric("SMA200", f"{sma200:.2f} {arrow}")
-
-    if macd is not None and signal is not None:
-        crossover = "Bullish Cross 🟢" if macd > signal else "Bearish Cross 🔴"
-        col5.metric("MACD Signal", f"{signal:.2f}", crossover)
+    st.dataframe(metrics,hide_index=True,use_container_width=True)
 
 except Exception as e:
-    st.write("Smart metrics error:", e)
-
-
-# NOTE:
-# This template is ready for the following upgrades:
-# - Tidy Smart Metrics table
-# - ADX interpretation (Weak/Building/Strong/Extreme)
-# - Golden Cross / Death Cross detection using previous and current SMA50/SMA200
-# - Trend score panel
-#
-# (The full integrated version exceeds the response size limits of chat and
-# should be produced in a dedicated editing session.)
+    st.warning(e)
 
 # ===============================
