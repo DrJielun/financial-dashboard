@@ -400,66 +400,55 @@ if raw_history is not None and info_payload is not None:
 else:
     st.error(f"❌ Core Data Exception: Historical records for symbol '{ticker_symbol}' could not be safely parsed.")
 
-# ===== SMART METRICS PANEL =====
-def trend_arrow(val_series):
-    if len(val_series) < 2:
-        return "→", "gray"
-    if val_series.iloc[-1] > val_series.iloc[-2]:
-        return "↑", "green"
-    elif val_series.iloc[-1] < val_series.iloc[-2]:
-        return "↓", "red"
-    return "→", "gray"
 
-def interpret_rsi(rsi):
-    if rsi > 70:
-        return "Overbought ⚠️"
-    elif rsi < 30:
-        return "Oversold 🟢"
-    return "Neutral"
-
-def interpret_macd(macd, signal):
-    if macd > signal:
-        return "Bullish 🟢"
-    elif macd < signal:
-        return "Bearish 🔴"
-    return "Neutral"
+# ===== SMART METRICS (FIXED - 2 ROW BLOOMBERG STYLE) =====
+st.markdown("---")
+st.markdown("## Smart Metrics")
 
 try:
-    st.subheader("Smart Metrics")
+    import pandas as pd
 
-    latest = df_view.iloc[-1]
+    def get_ext(t):
+        try:
+            i = t.info
+            return i.get("preMarketPrice"), i.get("postMarketPrice")
+        except:
+            return None, None
 
-    rsi = latest.get("RSI", None)
-    macd = latest.get("MACD", None)
-    signal = latest.get("MACD_Signal", None)
-    sma50 = latest.get("SMA50", None)
-    sma200 = latest.get("SMA200", None)
+    pre, post = get_ext(ticker)
 
-    col1, col2, col3 = st.columns(3)
+    sma50 = df['Close'].rolling(50).mean().iloc[-1]
+    sma200 = df['Close'].rolling(200).mean().iloc[-1]
 
-    if rsi is not None:
-        arrow, _ = trend_arrow(df_view["RSI"])
-        col1.metric("RSI(14)", f"{rsi:.2f} {arrow}", interpret_rsi(rsi))
+    # Cross
+    cross_signal = "N/A"
+    if not pd.isna(sma50) and not pd.isna(sma200):
+        cross_signal = "🟢 Golden" if sma50 > sma200 else "🔴 Death"
 
-    if macd is not None and signal is not None:
-        arrow, _ = trend_arrow(df_view["MACD"])
-        col2.metric("MACD", f"{macd:.2f} {arrow}", interpret_macd(macd, signal))
+    # Trend
+    trend_signal = "N/A"
+    if 'adx' in locals() and not adx.empty:
+        val = adx.iloc[-1]
+        if val < 20:
+            trend_signal = "Weak"
+        elif val < 40:
+            trend_signal = "Strong"
+        else:
+            trend_signal = "Very Strong"
 
-    if sma50 is not None:
-        arrow, _ = trend_arrow(df_view["SMA50"])
-        trend = "Above SMA200 🟢" if sma200 and sma50 > sma200 else "Below SMA200 🔴"
-        col3.metric("SMA50", f"{sma50:.2f} {arrow}", trend)
+    # Row 1
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("RSI", f"{rsi.iloc[-1]:.2f}" if 'rsi' in locals() else "N/A")
+    col2.metric("ADX", f"{adx.iloc[-1]:.2f}" if 'adx' in locals() else "N/A")
+    col3.metric("Trend", trend_signal)
+    col4.metric("MACD", f"{macd.iloc[-1]:.2f}" if 'macd' in locals() else "N/A")
 
-    col4, col5 = st.columns(2)
-
-    if sma200 is not None:
-        arrow, _ = trend_arrow(df_view["SMA200"])
-        col4.metric("SMA200", f"{sma200:.2f} {arrow}")
-
-    if macd is not None and signal is not None:
-        crossover = "Bullish Cross 🟢" if macd > signal else "Bearish Cross 🔴"
-        col5.metric("MACD Signal", f"{signal:.2f}", crossover)
+    # Row 2
+    col5, col6, col7, col8 = st.columns(4)
+    col5.metric("SMA50", f"{sma50:.2f}")
+    col6.metric("SMA200", f"{sma200:.2f}")
+    col7.metric("Cross", cross_signal)
+    col8.metric("Pre/Post", f"{pre:.2f} / {post:.2f}" if pre and post else "N/A")
 
 except Exception as e:
-    st.write("Smart metrics error:", e)
-# ===============================
+    st.error(f"Metrics error: {e}")
