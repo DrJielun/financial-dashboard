@@ -2,17 +2,18 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import plotly.graph_objects as go
 
 st.set_page_config(layout="wide")
 
-st.title("JL Quant - Smart Panel")
+st.title("JL Quant - Full Dashboard")
 
 ticker = st.text_input("Enter Ticker", "AAPL")
 
 data = yf.Ticker(ticker)
 hist = data.history(period="6mo")
 
-# --- Indicators ---
+# Indicators
 hist['SMA50'] = hist['Close'].rolling(50).mean()
 hist['SMA200'] = hist['Close'].rolling(200).mean()
 
@@ -29,38 +30,59 @@ hist['Signal'] = hist['MACD'].ewm(span=9, adjust=False).mean()
 
 latest = hist.iloc[-1]
 
-# --- Extended Hours (Yahoo) ---
+# ===== MAIN PRICE CHART =====
+st.markdown("### 📈 Price Chart")
+
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(x=hist.index, y=hist['Close'], name='Price'))
+fig.add_trace(go.Scatter(x=hist.index, y=hist['SMA50'], name='SMA50'))
+fig.add_trace(go.Scatter(x=hist.index, y=hist['SMA200'], name='SMA200'))
+
+fig.update_layout(template="plotly_dark", height=500)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# ===== INDICATORS =====
+st.markdown("### 📊 Indicators")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("#### RSI")
+    st.line_chart(hist['RSI'])
+
+with col2:
+    st.markdown("#### MACD")
+    st.line_chart(hist[['MACD', 'Signal']])
+
+st.markdown("#### Volume")
+st.bar_chart(hist['Volume'])
+
+# ===== EXTENDED HOURS =====
 info = data.info
 premarket_price = info.get("preMarketPrice")
 after_price = info.get("postMarketPrice")
 premarket_change = info.get("preMarketChangePercent")
 after_change = info.get("postMarketChangePercent")
 
-# --- Layout ---
+# ===== BOTTOM PANEL =====
 st.markdown("### 📊 Extended Hours & Smart Metrics")
 
 col1, col2, col3 = st.columns(3)
 
-# Extended Hours
 with col1:
     st.markdown("#### 🕒 Extended Hours")
+    st.metric("Pre-Market",
+              f"{premarket_price:.2f}" if premarket_price else "N/A",
+              f"{premarket_change:.2f}%" if premarket_change else None)
 
-    st.metric(
-        "Pre-Market",
-        f"{premarket_price:.2f}" if premarket_price else "N/A",
-        f"{premarket_change:.2f}%" if premarket_change else None
-    )
+    st.metric("After Hours",
+              f"{after_price:.2f}" if after_price else "N/A",
+              f"{after_change:.2f}%" if after_change else None)
 
-    st.metric(
-        "After Hours",
-        f"{after_price:.2f}" if after_price else "N/A",
-        f"{after_change:.2f}%" if after_change else None
-    )
-
-# Smart Metrics
 with col2:
     st.markdown("#### 🧠 Smart Metrics")
-
     rsi = latest['RSI']
     macd = latest['MACD']
     signal = latest['Signal']
@@ -69,10 +91,8 @@ with col2:
     st.metric("MACD", f"{macd:.2f}", "Bullish" if macd > signal else "Bearish")
     st.metric("Signal", f"{signal:.2f}")
 
-# Trend Structure
 with col3:
     st.markdown("#### 📈 Trend Structure")
-
     sma50 = latest['SMA50']
     sma200 = latest['SMA200']
 
@@ -82,7 +102,7 @@ with col3:
     trend = "Bullish Trend" if sma50 > sma200 else "Bearish Trend"
     st.markdown(f"**{trend}**")
 
-# Styling
+# Style
 st.markdown("""
 <style>
 div[data-testid="stMetric"] {
