@@ -400,31 +400,66 @@ if raw_history is not None and info_payload is not None:
 else:
     st.error(f"❌ Core Data Exception: Historical records for symbol '{ticker_symbol}' could not be safely parsed.")
 
-# ===== METRICS DISPLAY (Below Balance Sheet) =====
+# ===== SMART METRICS PANEL =====
+def trend_arrow(val_series):
+    if len(val_series) < 2:
+        return "→", "gray"
+    if val_series.iloc[-1] > val_series.iloc[-2]:
+        return "↑", "green"
+    elif val_series.iloc[-1] < val_series.iloc[-2]:
+        return "↓", "red"
+    return "→", "gray"
+
+def interpret_rsi(rsi):
+    if rsi > 70:
+        return "Overbought ⚠️"
+    elif rsi < 30:
+        return "Oversold 🟢"
+    return "Neutral"
+
+def interpret_macd(macd, signal):
+    if macd > signal:
+        return "Bullish 🟢"
+    elif macd < signal:
+        return "Bearish 🔴"
+    return "Neutral"
+
 try:
-    st.subheader("Metrics")
+    st.subheader("Smart Metrics")
 
     latest = df_view.iloc[-1]
 
+    rsi = latest.get("RSI", None)
+    macd = latest.get("MACD", None)
+    signal = latest.get("MACD_Signal", None)
+    sma50 = latest.get("SMA50", None)
+    sma200 = latest.get("SMA200", None)
+
     col1, col2, col3 = st.columns(3)
 
-    with col1:
-        st.metric("RSI(14)", f"{latest['RSI']:.2f}" if 'RSI' in df_view else "N/A")
+    if rsi is not None:
+        arrow, _ = trend_arrow(df_view["RSI"])
+        col1.metric("RSI(14)", f"{rsi:.2f} {arrow}", interpret_rsi(rsi))
 
-    with col2:
-        st.metric("MACD", f"{latest['MACD']:.2f}" if 'MACD' in df_view else "N/A")
+    if macd is not None and signal is not None:
+        arrow, _ = trend_arrow(df_view["MACD"])
+        col2.metric("MACD", f"{macd:.2f} {arrow}", interpret_macd(macd, signal))
 
-    with col3:
-        st.metric("MACD Signal", f"{latest['MACD_Signal']:.2f}" if 'MACD_Signal' in df_view else "N/A")
+    if sma50 is not None:
+        arrow, _ = trend_arrow(df_view["SMA50"])
+        trend = "Above SMA200 🟢" if sma200 and sma50 > sma200 else "Below SMA200 🔴"
+        col3.metric("SMA50", f"{sma50:.2f} {arrow}", trend)
 
     col4, col5 = st.columns(2)
 
-    with col4:
-        st.metric("SMA50", f"{latest['SMA50']:.2f}" if 'SMA50' in df_view else "N/A")
+    if sma200 is not None:
+        arrow, _ = trend_arrow(df_view["SMA200"])
+        col4.metric("SMA200", f"{sma200:.2f} {arrow}")
 
-    with col5:
-        st.metric("SMA200", f"{latest['SMA200']:.2f}" if 'SMA200' in df_view else "N/A")
+    if macd is not None and signal is not None:
+        crossover = "Bullish Cross 🟢" if macd > signal else "Bearish Cross 🔴"
+        col5.metric("MACD Signal", f"{signal:.2f}", crossover)
 
 except Exception as e:
-    st.write("Metrics error:", e)
-# =================================================
+    st.write("Smart metrics error:", e)
+# ===============================
