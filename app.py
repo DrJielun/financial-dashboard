@@ -13,7 +13,7 @@ ticker = st.text_input("Enter Ticker", "AAPL")
 data = yf.Ticker(ticker)
 hist = data.history(period="6mo")
 
-# Indicators
+# ===================== INDICATORS =====================
 hist['SMA50'] = hist['Close'].rolling(50).mean()
 hist['SMA200'] = hist['Close'].rolling(200).mean()
 
@@ -30,7 +30,30 @@ hist['Signal'] = hist['MACD'].ewm(span=9, adjust=False).mean()
 
 latest = hist.iloc[-1]
 
-# ===== MAIN PRICE CHART =====
+# ===================== FUNDAMENTALS =====================
+st.markdown("### 🏢 Company Fundamentals")
+
+info = data.info
+
+def format_billions(x):
+    return f"{x/1e9:.2f}B" if x else "N/A"
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("Market Cap", format_billions(info.get('marketCap')))
+    st.metric("EPS", info.get('trailingEps', 'N/A'))
+
+with col2:
+    st.metric("P/E Ratio", info.get('trailingPE', 'N/A'))
+    dy = info.get('dividendYield')
+    st.metric("Dividend Yield", f"{dy*100:.2f}%" if dy else "N/A")
+
+with col3:
+    st.metric("52W High", info.get('fiftyTwoWeekHigh', 'N/A'))
+    st.metric("52W Low", info.get('fiftyTwoWeekLow', 'N/A'))
+
+# ===================== PRICE CHART =====================
 st.markdown("### 📈 Price Chart")
 
 fig = go.Figure()
@@ -43,7 +66,7 @@ fig.update_layout(template="plotly_dark", height=500)
 
 st.plotly_chart(fig, use_container_width=True)
 
-# ===== INDICATORS =====
+# ===================== INDICATORS =====================
 st.markdown("### 📊 Indicators")
 
 col1, col2 = st.columns(2)
@@ -59,14 +82,13 @@ with col2:
 st.markdown("#### Volume")
 st.bar_chart(hist['Volume'])
 
-# ===== EXTENDED HOURS =====
-info = data.info
+# ===================== EXTENDED HOURS =====================
 premarket_price = info.get("preMarketPrice")
 after_price = info.get("postMarketPrice")
 premarket_change = info.get("preMarketChangePercent")
 after_change = info.get("postMarketChangePercent")
 
-# ===== BOTTOM PANEL =====
+# ===================== BOTTOM PANEL =====================
 st.markdown("### 📊 Extended Hours & Smart Metrics")
 
 col1, col2, col3 = st.columns(3)
@@ -102,7 +124,7 @@ with col3:
     trend = "Bullish Trend" if sma50 > sma200 else "Bearish Trend"
     st.markdown(f"**{trend}**")
 
-# Style
+# ===================== STYLE =====================
 st.markdown("""
 <style>
 div[data-testid="stMetric"] {
