@@ -1,3 +1,33 @@
+
+
+# ===== Added: Label + Trend Arrow Helpers =====
+import plotly.graph_objects as go
+
+def add_latest_label(fig, x, y, text, row, col, color="white"):
+    fig.add_trace(
+        go.Scatter(
+            x=[x],
+            y=[y],
+            mode="markers+text",
+            text=[text],
+            textposition="top right",
+            marker=dict(size=6),
+            textfont=dict(size=11, color=color),
+            showlegend=False
+        ),
+        row=row, col=col
+    )
+
+def get_trend_arrow(series):
+    if len(series) < 2:
+        return ""
+    if series.iloc[-1] > series.iloc[-2]:
+        return "↑"
+    elif series.iloc[-1] < series.iloc[-2]:
+        return "↓"
+    return "→"
+# =============================================
+
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
@@ -399,3 +429,17 @@ if raw_history is not None and info_payload is not None:
 
 else:
     st.error(f"❌ Core Data Exception: Historical records for symbol '{ticker_symbol}' could not be safely parsed.")
+
+
+# ===== Usage (add inside your plotting section) =====
+# latest_x = df_view.index[-1]
+# arrow_sma50 = get_trend_arrow(df_view["SMA50"])
+# arrow_sma200 = get_trend_arrow(df_view["SMA200"])
+# arrow_rsi = get_trend_arrow(df_view["RSI"])
+# arrow_macd = get_trend_arrow(df_view["MACD"])
+
+# Example:
+# add_latest_label(fig, latest_x, latest["SMA50"], f"SMA50: {latest['SMA50']:.2f} {arrow_sma50}", row=1, col=1)
+# add_latest_label(fig, latest_x, latest["RSI"], f"RSI(14): {latest['RSI']:.1f} {arrow_rsi}", row=3, col=1)
+# add_latest_label(fig, latest_x, latest["MACD"], f"MACD: {latest['MACD']:.2f} {arrow_macd}", row=4, col=1)
+# ===================================================
