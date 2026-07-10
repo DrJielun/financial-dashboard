@@ -1,30 +1,3 @@
-
-import plotly.graph_objects as go
-
-def add_latest_label(fig, x, y, text, row, col, color="white"):
-    fig.add_trace(
-        go.Scatter(
-            x=[x],
-            y=[y],
-            mode="markers+text",
-            text=[text],
-            textposition="top right",
-            marker=dict(size=6),
-            textfont=dict(size=11, color=color),
-            showlegend=False
-        ),
-        row=row, col=col
-    )
-
-def get_trend_arrow(series):
-    if len(series) < 2:
-        return ""
-    if series.iloc[-1] > series.iloc[-2]:
-        return "↑"
-    elif series.iloc[-1] < series.iloc[-2]:
-        return "↓"
-    return "→"
-
 import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
@@ -427,38 +400,31 @@ if raw_history is not None and info_payload is not None:
 else:
     st.error(f"❌ Core Data Exception: Historical records for symbol '{ticker_symbol}' could not be safely parsed.")
 
-
-# ===== AUTO-ADDED FEATURES: Labels + Trend Arrows =====
+# ===== METRICS DISPLAY (Below Balance Sheet) =====
 try:
+    st.subheader("Metrics")
+
     latest = df_view.iloc[-1]
-    latest_x = df_view.index[-1]
 
-    arrow_sma50 = get_trend_arrow(df_view["SMA50"])
-    arrow_sma200 = get_trend_arrow(df_view["SMA200"])
-    arrow_rsi = get_trend_arrow(df_view["RSI"])
-    arrow_macd = get_trend_arrow(df_view["MACD"])
+    col1, col2, col3 = st.columns(3)
 
-    # SMA Labels
-    if "SMA50" in df_view:
-        add_latest_label(fig, latest_x, latest["SMA50"], f"SMA50: {latest['SMA50']:.2f} {arrow_sma50}", 1, 1)
+    with col1:
+        st.metric("RSI(14)", f"{latest['RSI']:.2f}" if 'RSI' in df_view else "N/A")
 
-    if "SMA200" in df_view:
-        add_latest_label(fig, latest_x, latest["SMA200"], f"SMA200: {latest['SMA200']:.2f} {arrow_sma200}", 1, 1)
+    with col2:
+        st.metric("MACD", f"{latest['MACD']:.2f}" if 'MACD' in df_view else "N/A")
 
-    # RSI Label
-    if "RSI" in df_view:
-        add_latest_label(fig, latest_x, latest["RSI"], f"RSI(14): {latest['RSI']:.1f} {arrow_rsi}", 3, 1)
+    with col3:
+        st.metric("MACD Signal", f"{latest['MACD_Signal']:.2f}" if 'MACD_Signal' in df_view else "N/A")
 
-    # MACD Labels
-    if "MACD" in df_view:
-        add_latest_label(fig, latest_x, latest["MACD"], f"MACD: {latest['MACD']:.2f} {arrow_macd}", 4, 1)
+    col4, col5 = st.columns(2)
 
-    if "MACD_Signal" in df_view:
-        add_latest_label(fig, latest_x, latest["MACD_Signal"], f"Signal: {latest['MACD_Signal']:.2f}", 4, 1)
+    with col4:
+        st.metric("SMA50", f"{latest['SMA50']:.2f}" if 'SMA50' in df_view else "N/A")
 
-    if "MACD_Hist" in df_view:
-        add_latest_label(fig, latest_x, latest["MACD_Hist"], f"Hist: {latest['MACD_Hist']:.2f}", 4, 1)
+    with col5:
+        st.metric("SMA200", f"{latest['SMA200']:.2f}" if 'SMA200' in df_view else "N/A")
 
 except Exception as e:
-    print("Feature injection error:", e)
-# =====================================================
+    st.write("Metrics error:", e)
+# =================================================
