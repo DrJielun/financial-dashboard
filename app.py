@@ -1,6 +1,4 @@
 
-
-# ===== Added: Label + Trend Arrow Helpers =====
 import plotly.graph_objects as go
 
 def add_latest_label(fig, x, y, text, row, col, color="white"):
@@ -26,7 +24,6 @@ def get_trend_arrow(series):
     elif series.iloc[-1] < series.iloc[-2]:
         return "↓"
     return "→"
-# =============================================
 
 import streamlit as st
 import yfinance as yf
@@ -431,15 +428,37 @@ else:
     st.error(f"❌ Core Data Exception: Historical records for symbol '{ticker_symbol}' could not be safely parsed.")
 
 
-# ===== Usage (add inside your plotting section) =====
-# latest_x = df_view.index[-1]
-# arrow_sma50 = get_trend_arrow(df_view["SMA50"])
-# arrow_sma200 = get_trend_arrow(df_view["SMA200"])
-# arrow_rsi = get_trend_arrow(df_view["RSI"])
-# arrow_macd = get_trend_arrow(df_view["MACD"])
+# ===== AUTO-ADDED FEATURES: Labels + Trend Arrows =====
+try:
+    latest = df_view.iloc[-1]
+    latest_x = df_view.index[-1]
 
-# Example:
-# add_latest_label(fig, latest_x, latest["SMA50"], f"SMA50: {latest['SMA50']:.2f} {arrow_sma50}", row=1, col=1)
-# add_latest_label(fig, latest_x, latest["RSI"], f"RSI(14): {latest['RSI']:.1f} {arrow_rsi}", row=3, col=1)
-# add_latest_label(fig, latest_x, latest["MACD"], f"MACD: {latest['MACD']:.2f} {arrow_macd}", row=4, col=1)
-# ===================================================
+    arrow_sma50 = get_trend_arrow(df_view["SMA50"])
+    arrow_sma200 = get_trend_arrow(df_view["SMA200"])
+    arrow_rsi = get_trend_arrow(df_view["RSI"])
+    arrow_macd = get_trend_arrow(df_view["MACD"])
+
+    # SMA Labels
+    if "SMA50" in df_view:
+        add_latest_label(fig, latest_x, latest["SMA50"], f"SMA50: {latest['SMA50']:.2f} {arrow_sma50}", 1, 1)
+
+    if "SMA200" in df_view:
+        add_latest_label(fig, latest_x, latest["SMA200"], f"SMA200: {latest['SMA200']:.2f} {arrow_sma200}", 1, 1)
+
+    # RSI Label
+    if "RSI" in df_view:
+        add_latest_label(fig, latest_x, latest["RSI"], f"RSI(14): {latest['RSI']:.1f} {arrow_rsi}", 3, 1)
+
+    # MACD Labels
+    if "MACD" in df_view:
+        add_latest_label(fig, latest_x, latest["MACD"], f"MACD: {latest['MACD']:.2f} {arrow_macd}", 4, 1)
+
+    if "MACD_Signal" in df_view:
+        add_latest_label(fig, latest_x, latest["MACD_Signal"], f"Signal: {latest['MACD_Signal']:.2f}", 4, 1)
+
+    if "MACD_Hist" in df_view:
+        add_latest_label(fig, latest_x, latest["MACD_Hist"], f"Hist: {latest['MACD_Hist']:.2f}", 4, 1)
+
+except Exception as e:
+    print("Feature injection error:", e)
+# =====================================================
